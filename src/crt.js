@@ -1,0 +1,703 @@
+// WebGL2 CRT presentation pipeline.
+//
+//   source (R8 beam intensity, grid + margin, NEAREST)
+//     -> beam pass      spot convolution + luma-widened scanlines, blended with
+//                       the previous frame for persistence (ping-pong)
+//     -> bloom pass     threshold + separable blur at quarter res
+//     -> composite      barrel warp, aperture mask, tint, vignette, noise,
+//                       flicker, rolling bar, glass
+//
+// Everything upstream of the composite is monochrome beam intensity; colour is
+// applied in the last pass only.
+//
+// Colour mode (2026-09-28, INTERVAL; `color: true` to the constructor): the
+// same chain carried on RGBA textures instead of R8, one beam per gun. Every
+// pass below is written on vec3, which an R8 texture reads as (r, 0, 0), so
+// the monochrome path computes exactly what it did before; only the
+// composite has to know which mode it is in (uColor), because that is where
+// the misconvergence fringe picks one channel from each offset sample. A
+// colour tube wants the white phosphor, so the program sets that tint.
+//
+// Uniform values (the SCREEN param set) and the phosphor table are passed
+// into the constructor -- this module imports nothing from config.js.
+//
+// 2026-08-25 audit: it used to `await import('../config.js?t=' +
+// Date.now())` (2026-08-22, chasing the same GitHub-Pages max-age=600
+// staleness main.js was already dodging for program.js). That made this
+// file's PHOSPHORS a DIFFERENT object from program.js's copy, so
+// setPhosphor()'s `tint === this.phosphor` short-circuit below never
+// matched a tint program.js had just assigned, and clearPersist() ran on
+// every lock, unlock and colour cycle. One config instance now lives in
+// main.js and comes in through mount() -- see main.js for the stamping
+// scheme that replaced the per-load timestamp.
+
+const VERT = `#version 300 es
+void main() {
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`
+
+// The spot convolution is separable. Running the horizontal half at source
+// resolution costs 3 texture fetches per output pixel instead of 21. Do not
+// inline it into the beam pass.
+const SPOT_H = `#version 300 es
+precision highp float;
+uniform sampler2D uSrc;
+uniform vec2 uOutSize;
+uniform float uBeam;
+uniform float uSharpen;
+out vec4 fragColor;
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uOutSize;
+  // Two Gaussians over the same seven taps: the beam spot, and one twice as
+  // wide. Their difference is an unsharp mask; subtracting it puts an overshoot
+  // either side of every vertical edge, as a video amplifier's peaking stage
+  // did. Horizontal only: the scan geometry fixes the vertical direction.
+  //
+  // Each Gaussian is normalised separately. The summed weights of a difference
+  // of Gaussians pass through zero, so one divisor blows up at moderate
+  // uSharpen; normalising separately holds DC at unity.
+  vec3 accN = vec3(0.0), accW = vec3(0.0);
+  float wsumN = 0.0, wsumW = 0.0;
+  float s2 = uBeam * uBeam;
+  for (int i = -3; i <= 3; i++) {
+    float fi = float(i);
+    float d = fi * fi;
+    float wn = exp(-0.5 * d / s2);
+    float ww = exp(-0.5 * d / (s2 * 4.0));
+    vec3 t = texture(uSrc, uv + vec2(fi / uOutSize.x, 0.0)).rgb;
+    accN += t * wn; wsumN += wn;
+    accW += t * ww; wsumW += ww;
+  }
+  vec3 narrow = accN / wsumN;
+  // Undershoot goes negative and clamps to 0 in the target; overshoot clamps
+  // at full drive.
+  fragColor = vec4(narrow + uSharpen * (narrow - accW / wsumW), 1.0);
+}`
+
+const BEAM = `#version 300 es
+precision highp float;
+uniform sampler2D uSrc;   // horizontally convolved, source resolution
+uniform sampler2D uPrev;
+uniform vec2 uSrcSize;
+uniform vec2 uOutSize;
+uniform float uDecay;
+uniform float uScanMin;
+uniform float uScanMax;
+out vec4 fragColor;
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uOutSize;
+  // Grid row 0 is the top line; GL texture v=0 is the bottom row.
+  vec2 sp = vec2(uv.x, 1.0 - uv.y) * uSrcSize;
+  float rowF = sp.y - 0.5;
+  float base = floor(rowF);
+
+  vec3 total = vec3(0.0);
+  for (int r = -1; r <= 1; r++) {
+    float row = base + float(r);
+    // Sampling at the texel centre gives LINEAR horizontal interpolation and no
+    // vertical bleed.
+    vec3 lum = texture(uSrc, vec2(sp.x / uSrcSize.x, (row + 0.5) / uSrcSize.y)).rgb;
+    // Brighter spots bloom wider -- per gun, in colour mode.
+    vec3 sigma = mix(vec3(uScanMin), vec3(uScanMax), lum);
+    float dy = rowF - row;
+    total += lum * exp(-0.5 * dy * dy / (sigma * sigma));
+  }
+
+  vec3 prev = texture(uPrev, uv).rgb;
+  fragColor = vec4(max(total, prev * uDecay), 1.0);
+}`
+
+const BLUR = `#version 300 es
+precision highp float;
+uniform sampler2D uTex;
+uniform vec2 uOutSize;
+uniform vec2 uDir;
+uniform float uThreshold;
+out vec4 fragColor;
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uOutSize;
+  vec2 step = uDir / uOutSize;
+  float w[5] = float[](0.227, 0.194, 0.121, 0.054, 0.016);
+  vec3 acc = vec3(0.0);
+  for (int i = -4; i <= 4; i++) {
+    vec3 s = texture(uTex, uv + step * float(i)).rgb;
+    acc += max(s - uThreshold, 0.0) * w[i < 0 ? -i : i];
+  }
+  fragColor = vec4(acc, 1.0);
+}`
+
+const COMPOSITE = `#version 300 es
+precision highp float;
+// Required: integers default to mediump, which is only guaranteed 16 bits, and
+// the hash below relies on 32-bit multiply wraparound. ANGLE and mobile honour
+// the default and produce banded, repeating grain without this.
+precision highp int;
+uniform sampler2D uScreen;
+uniform sampler2D uBloom;
+uniform vec2 uRes;
+uniform float uTime;
+uniform vec3 uPhosphor;
+uniform float uFill, uCurve, uBloomAmt, uMaskAmt, uMaskPitch, uVignette, uAspect;
+uniform float uNoise, uFlicker, uRoll, uRollPhase, uChroma, uBrightness, uAmbient, uBg, uGlass;
+uniform float uAmbientFalloff;
+uniform float uNoiseStreak, uSnow;
+uniform float uColor;
+out vec4 fragColor;
+
+// Integer bit mixing rather than fract(sin(dot(...))). The sine hash is smooth,
+// so nearby seeds give nearby results and shifting the seed translates the noise
+// field instead of reseeding it; it also depends on sin() precision at large
+// arguments, which varies by GPU. Here every input bit affects every output bit,
+// so consecutive frames are independent.
+uint bits(uvec3 v) {
+  v = v * 1664525u + 1013904223u;
+  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+  v ^= v >> 16u;
+  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+  return v.x;
+}
+
+// Time is a separate coordinate, never added into the spatial ones.
+float hash(vec3 p) {
+  return float(bits(uvec3(ivec3(p))) & 0xffffffu) / 16777215.0;
+}
+
+// Barrel distortion, normalised so the corners land on the raster edge. Without
+// the divisor the warp magnifies and clips column 0.
+vec2 warp(vec2 q, float k) {
+  return 0.5 + 0.5 * q * (1.0 + k * dot(q, q)) / (1.0 + 2.0 * k);
+}
+
+float roundedBox(vec2 p, vec2 b, float r) {
+  vec2 q = abs(p) - b + r;
+  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+
+void main() {
+  // Normalised so the faceplate fits the narrow axis. At or above uAspect
+  // (width/height, 4:3 for a television) the height binds; below it the width
+  // does, which stops a narrow canvas cropping the ends off every line.
+  float s = min(uRes.x / uAspect, uRes.y);
+  vec2 p = (gl_FragCoord.xy - 0.5 * uRes) / s * 2.0;
+  vec2 halfSz = vec2(uFill * uAspect, uFill);
+
+  vec2 q = p / halfSz;
+  vec2 uv = warp(q, uCurve);
+
+  // --- surround -------------------------------------------------------------
+  // No bezel. Only light spilled from the tube.
+  vec3 col = uPhosphor * uAmbient * exp(-uAmbientFalloff * length(p));
+
+  // --- glass -----------------------------------------------------------------
+  // Defined in warped space so the outline follows the barrel curve and always
+  // contains the swept raster. In flat screen space it only holds at low
+  // curvature: the raster bows outward as uCurve rises and gets cropped.
+  float edge = smoothstep(0.004, -0.004,
+                          roundedBox(uv - 0.5, vec2(0.5 + uGlass), 0.035));
+
+  if (edge > 0.0) {
+    // Frame counter for anything that changes once per frame and holds within
+    // it. Quantising at 60 keeps the noise at video rate on a 120Hz panel.
+    // uTime arrives already wrapped to [0, 1024) by render() -- see the note
+    // there: the wrap has to happen on the CPU in double precision, because
+    // a mod() applied here runs on a float32 that has already lost the
+    // per-frame step by the time a session is a day or two old. 1024 * 60
+    // is a whole number of frames, so the counter is seamless across the
+    // wrap.
+    float nt = floor(uTime * 60.0);
+
+    // Outside the swept raster, dark.
+    vec2 g = step(vec2(0.0), uv) * step(uv, vec2(1.0));
+    float raster = g.x * g.y;
+
+    // Beam misconvergence, exaggerated into a colour fringe.
+    // textureLod, not texture: this whole block sits inside a non-uniform
+    // branch (edge varies per fragment), where implicit-derivative
+    // texture() is undefined per the GLSL ES spec. Identical output here
+    // -- neither sampler carries a mip chain, so lod 0 is the only level
+    // there is -- this just stops relying on every driver shrugging the
+    // same way about undefined behaviour.
+    float o = uChroma * 0.0018;
+    vec3 sa = textureLod(uScreen, uv + vec2(o, 0.0), 0.0).rgb;
+    vec3 sb = textureLod(uScreen, uv, 0.0).rgb;
+    vec3 sc = textureLod(uScreen, uv - vec2(o, 0.0), 0.0).rgb;
+    // Mono: one beam, fringed by sampling it three times. Colour: each gun
+    // from its own offset, which is what misconvergence actually is.
+    vec3 lum = (uColor > 0.5 ? vec3(sa.r, sb.g, sc.b) : vec3(sa.r, sb.r, sc.r)) * raster;
+
+    vec3 glass = uPhosphor * lum * uBrightness;
+
+    // Glow blooms toward white.
+    vec3 blt = textureLod(uBloom, uv, 0.0).rgb;
+    vec3 bl = (uColor > 0.5 ? blt : blt.rrr) * raster;
+    glass += mix(uPhosphor, vec3(1.0), 0.35) * bl * uBloomAmt;
+
+    // Aperture grille, evaluated in device pixels.
+    glass *= 1.0 - uMaskAmt * (0.5 + 0.5 * cos(gl_FragCoord.x * 6.2831853 / uMaskPitch));
+
+    // Rolling shutter bar. A camera artefact, not a CRT one. Speed is how many
+    // times a second the bar crosses the screen, controlled separately from
+    // depth. The phase is integrated on the CPU (render()) and arrives in
+    // [0, 1), so it neither loses precision with session age nor jumps when
+    // the wrapped clock rolls over.
+    float band = fract(uv.y - uRollPhase);
+    glass *= 1.0 + uRoll * exp(-pow((band - 0.5) / 0.09, 2.0));
+
+    glass *= 1.0 - uVignette * dot(q, q);
+    glass *= 1.0 + uFlicker * (hash(vec3(1.0, 7.0, nt)) - 0.5);
+
+    // --- analogue noise ---
+    // Video noise, not film grain. Three differences:
+    //
+    //   1. The amplifier has finite bandwidth, so a spike smears along the line
+    //      into a short dash. Quantising x before hashing produces that.
+    //   2. Per-line gain varies.
+    //   3. Noise is multiplicative on the video, so it grows where the beam is
+    //      lit rather than sitting on top at a constant level.
+    float nx = floor(gl_FragCoord.x / max(uNoiseStreak, 1.0));
+    float ny = gl_FragCoord.y;
+
+    float grain = hash(vec3(nx, ny, nt)) - 0.5;
+    float lineGain = 0.55 + 0.9 * hash(vec3(ny, nt, 5.0));
+    float carrier = 0.3 + 0.7 * (uColor > 0.5 ? max(max(lum.r, lum.g), lum.b) : lum.g);
+    glass += grain * lineGain * carrier * uNoise;
+
+    // Sparse one-frame specks: signal dropouts. Aligned to the same horizontal
+    // cells as the grain, tinted by the phosphor, riding the same carrier.
+    float speck = hash(vec3(nx, ny, nt + 4096.0));
+    float pop = step(1.0 - uSnow, speck) * (0.18 + 0.3 * hash(vec3(nx, ny, nt + 8192.0)));
+    glass += uPhosphor * pop * carrier;
+
+    // Unlit-tube floor, tinted by the phosphor rather than neutral grey.
+    glass += uPhosphor * uBg + vec3(0.005);
+    glass += vec3(0.030) * exp(-7.0 * length(q - vec2(-0.40, 0.52)));
+
+    col = mix(col, glass, edge);
+  }
+
+  fragColor = vec4(col, 1.0);
+}`
+
+/** Period, in seconds, the shader clock wraps at. A whole number of 1/60s
+ *  frames (1024 * 60 = 61440), so the per-frame noise counter rolls over
+ *  without a seam. See render() for why the wrap lives on the CPU. */
+export const CLOCK_WRAP_S = 1024
+
+/** The shader's clock: seconds since start, wrapped to [0, CLOCK_WRAP_S). */
+export function wrapClock(time) {
+  return ((time % CLOCK_WRAP_S) + CLOCK_WRAP_S) % CLOCK_WRAP_S
+}
+
+/** One frame of roll-bar phase, in [0, 1): `speed` is crossings per second.
+ *  Integrated rather than computed from the clock so it is continuous
+ *  across the clock wrap and across a change of speed. A backwards or
+ *  absurd dt (a clock reset, a tab asleep for an hour) contributes nothing
+ *  rather than a random phase. */
+export function advanceRollPhase(phase, dt, speed) {
+  if (!(dt > 0) || !(dt < 1) || !Number.isFinite(speed)) return phase
+  const next = (phase + dt * speed) % 1
+  return next < 0 ? next + 1 : next
+}
+
+export class CRT {
+  /**
+   * @param {HTMLCanvasElement} canvas
+   * @param {number} srcW framebuffer width, from Term.w
+   * @param {number} srcH framebuffer height, from Term.h
+   * @param {object} [opts]
+   * @param {number} [opts.superSample=2] beam and persistence buffer size as
+   *   a multiple of the source
+   * @param {object} [opts.params] the full uniform set (config.js's SCREEN).
+   *   Copied, and then read live every frame -- program code mutates
+   *   `crt.params` directly to drive the picture.
+   * @param {Object<string, number[]>} [opts.phosphors] name -> vec3 tint
+   *   table (config.js's PHOSPHORS), for setPhosphor()
+   * @param {string} [opts.phosphor] starting tint name
+   */
+  constructor(canvas, srcW, srcH, { superSample = 2, params = {}, phosphors = {}, phosphor = null, color = false } = {}) {
+    const gl = canvas.getContext('webgl2', {
+      alpha: false, antialias: false, preserveDrawingBuffer: false,
+    })
+    if (!gl) throw new Error('WebGL2 is required')
+
+    this.gl = gl
+    this.canvas = canvas
+    /** Colour mode: RGBA textures throughout, matching a Term with a
+     *  palette. Fixed for the life of the CRT. */
+    this.color = !!color
+    this.fmt = this.color
+      ? { internal: gl.RGBA8, format: gl.RGBA, bpp: 4 }
+      : { internal: gl.R8, format: gl.RED, bpp: 1 }
+    this.srcW = srcW
+    this.srcH = srcH
+    this.superSample = superSample
+    this.cw = srcW * superSample
+    this.ch = srcH * superSample
+    this.params = { ...params }
+    this.phosphors = phosphors
+    this.phosphor = phosphors[phosphor] ?? [1, 1, 1]
+    this.dpr = 1
+
+    // resize() used to read canvas.clientWidth/Height every frame -- a
+    // forced style/layout flush per rAF for a box that changes only when the
+    // window does. A ResizeObserver flips this flag instead; resize() then
+    // re-measures only when it is set (or the device pixel ratio moved,
+    // which the observer does not report on every browser). 2026-08-25 audit.
+    this._sizeDirty = true
+    this._lastDpr = 0
+    this._lastBudget = 0
+    this._ro = null
+    if (typeof ResizeObserver !== 'undefined') {
+      this._ro = new ResizeObserver(() => { this._sizeDirty = true })
+      this._ro.observe(canvas)
+    }
+
+    // Every GL object created, so dispose() can free them.
+    this.textures = []
+    this.framebuffers = []
+    this.programs = []
+    this.disposed = false
+    this.flip = 0
+
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
+    this.vao = gl.createVertexArray()
+
+    this.progSpot = this.program(VERT, SPOT_H)
+    this.progBeam = this.program(VERT, BEAM)
+    this.progBlur = this.program(VERT, BLUR)
+    this.progComp = this.program(VERT, COMPOSITE)
+
+    this.build()
+  }
+
+  /** Set the beam tint by name (a key of the phosphors table passed to the
+   *  constructor). A no-op if that exact tint is already up, so callers can
+   *  re-assert the current tint freely without the persistence clear below. */
+  setPhosphor(name) {
+    const tint = this.phosphors[name]
+    if (!tint || tint === this.phosphor) return
+    this.phosphor = tint
+    // 2026-08-22 (bug report: locking the secret NIN station left the old
+    // tint's afterglow visibly bleeding through the new one -- overlapping/
+    // garbled-looking text for a beat right after the switch) -- the
+    // persistence buffer accumulates brightness across frames for the
+    // phosphor-decay look, so a tint change alone leaves the PREVIOUS
+    // tint's accumulated glow sitting in that buffer, composited with the
+    // new tint on the very next frame. Clearing it here is the same
+    // tradeoff setSource()/build() already make on a resize (see
+    // clearPersist()'s own comment: "so frame 0 is not garbage") -- one
+    // frame flashes to black instead of a lingering double-exposure ghost,
+    // which reads as a clean instant switch, closer to a real set's
+    // channel change than a smeared one.
+    this.clearPersist()
+  }
+
+  /** Allocate the buffers sized from the source. */
+  build() {
+    const gl = this.gl
+    this.src = this.texture(this.srcW, this.srcH, gl.NEAREST)
+    this.spot = this.target(this.srcW, this.srcH)
+    this.persist = [this.target(this.cw, this.ch), this.target(this.cw, this.ch)]
+    this.bloom = [
+      this.target(this.cw >> 2, this.ch >> 2),
+      this.target(this.cw >> 2, this.ch >> 2),
+    ]
+    this.clearPersist()
+  }
+
+  /**
+   * Re-point the chain at a differently sized source. Every buffer upstream of
+   * the composite is sized from the framebuffer, so all of them are rebuilt.
+   *
+   * Programs, uniforms, params and phosphor survive; the persistence buffer does
+   * not, so the output is dark for one frame.
+   */
+  setSource(srcW, srcH) {
+    if (this.disposed || (srcW === this.srcW && srcH === this.srcH)) return
+    this.dropTexture(this.src)
+    for (const t of [this.spot, ...this.persist, ...this.bloom]) this.dropTarget(t)
+
+    this.srcW = srcW
+    this.srcH = srcH
+    this.cw = srcW * this.superSample
+    this.ch = srcH * this.superSample
+    this.build()
+  }
+
+  /** Clear the persistence buffers, so frame 0 is not garbage. */
+  clearPersist() {
+    const gl = this.gl
+    for (const t of this.persist) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo)
+      gl.clearColor(0, 0, 0, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+  }
+
+  // Free, then untrack. A freed handle left in the arrays would be deleted
+  // twice by dispose().
+  dropTexture(tex) {
+    this.gl.deleteTexture(tex)
+    const i = this.textures.indexOf(tex)
+    if (i >= 0) this.textures.splice(i, 1)
+  }
+
+  dropTarget(t) {
+    this.gl.deleteFramebuffer(t.fbo)
+    const i = this.framebuffers.indexOf(t.fbo)
+    if (i >= 0) this.framebuffers.splice(i, 1)
+    this.dropTexture(t.tex)
+  }
+
+  program(vsSrc, fsSrc) {
+    const gl = this.gl
+    const compile = (type, src) => {
+      const s = gl.createShader(type)
+      gl.shaderSource(s, src)
+      gl.compileShader(s)
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        throw new Error(gl.getShaderInfoLog(s) + '\n' + src)
+      }
+      return s
+    }
+    const p = gl.createProgram()
+    const vs = compile(gl.VERTEX_SHADER, vsSrc)
+    const fs = compile(gl.FRAGMENT_SHADER, fsSrc)
+    gl.attachShader(p, vs)
+    gl.attachShader(p, fs)
+    gl.linkProgram(p)
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      throw new Error(gl.getProgramInfoLog(p) ?? 'link failed')
+    }
+    // Linked into the program; the shader objects leak until deleted.
+    gl.deleteShader(vs)
+    gl.deleteShader(fs)
+
+    // Cache uniform locations by name.
+    p.u = {}
+    const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS)
+    for (let i = 0; i < n; i++) {
+      const name = gl.getActiveUniform(p, i).name
+      p.u[name] = gl.getUniformLocation(p, name)
+    }
+    this.programs.push(p)
+    return p
+  }
+
+  texture(w, h, filter) {
+    const gl = this.gl
+    const t = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, t)
+    gl.texImage2D(gl.TEXTURE_2D, 0, this.fmt.internal, w, h, 0, this.fmt.format, gl.UNSIGNED_BYTE, null)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    this.textures.push(t)
+    return t
+  }
+
+  target(w, h) {
+    const gl = this.gl
+    const tex = this.texture(w, h, gl.LINEAR)
+    const fbo = gl.createFramebuffer()
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0)
+    this.framebuffers.push(fbo)
+    return { tex, fbo, w, h }
+  }
+
+  /**
+   * Upload beam bytes. `fb` is Term.fb. `bands`, when given, is the list of
+   * [y0, y1) framebuffer pixel rows Term.raster() reports as redrawn; only
+   * those rows go over the bus (2026-08-25 audit). Without it the whole
+   * frame does.
+   */
+  upload(fb, bands = null) {
+    const gl = this.gl
+    gl.bindTexture(gl.TEXTURE_2D, this.src)
+    if (!bands) {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.srcW, this.srcH,
+                       this.fmt.format, gl.UNSIGNED_BYTE, fb)
+      return
+    }
+    for (const [y0, y1] of bands) {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, y0, this.srcW, y1 - y0,
+                       this.fmt.format, gl.UNSIGNED_BYTE, fb, y0 * this.srcW * this.fmt.bpp)
+    }
+  }
+
+  /**
+   * Match the drawing buffer to the canvas box, capped at `budget` pixels.
+   *
+   * The composite is the only pass that scales with the canvas size. Measured
+   * off the canvas box, not the window. No feedback loop: the CSS size is a
+   * percentage, so writing canvas.width cannot move clientWidth.
+   */
+  resize(budget = 2.6e6) {
+    const dpr = Math.min(devicePixelRatio || 1, 2)
+    // Nothing moved since the last measure: skip the layout read entirely.
+    if (!this._sizeDirty && dpr === this._lastDpr && budget === this._lastBudget) return
+    this._sizeDirty = false
+    this._lastDpr = dpr
+    this._lastBudget = budget
+    // An unlaid-out canvas answers 0, and a zero-sized drawing buffer is a GL
+    // error.
+    const cw = this.canvas.clientWidth || innerWidth
+    const ch = this.canvas.clientHeight || innerHeight
+    const scale = Math.min(1, Math.sqrt(budget / (cw * ch * dpr * dpr)))
+    const w = Math.round(cw * dpr * scale)
+    const h = Math.round(ch * dpr * scale)
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w
+      this.canvas.height = h
+    }
+    this.dpr = dpr * scale
+  }
+
+  bind(target) {
+    const gl = this.gl
+    if (target) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo)
+      gl.viewport(0, 0, target.w, target.h)
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+      gl.viewport(0, 0, this.canvas.width, this.canvas.height)
+    }
+  }
+
+  draw() { this.gl.drawArrays(this.gl.TRIANGLES, 0, 3) }
+
+  unit(prog, name, tex, slot) {
+    const gl = this.gl
+    gl.activeTexture(gl.TEXTURE0 + slot)
+    gl.bindTexture(gl.TEXTURE_2D, tex)
+    gl.uniform1i(prog.u[name], slot)
+  }
+
+  /** @param {number} time seconds since start. */
+  render(time) {
+    if (this.disposed) return
+    const gl = this.gl
+    const P = this.params
+    gl.bindVertexArray(this.vao)
+
+    // --- horizontal spot convolution, at source resolution ---
+    gl.useProgram(this.progSpot)
+    this.bind(this.spot)
+    this.unit(this.progSpot, 'uSrc', this.src, 0)
+    gl.uniform2f(this.progSpot.u.uOutSize, this.srcW, this.srcH)
+    gl.uniform1f(this.progSpot.u.uBeam, P.beam)
+    gl.uniform1f(this.progSpot.u.uSharpen, P.sharpen)
+    this.draw()
+
+    // --- scanline profile + persistence ---
+    const prev = this.persist[this.flip]
+    const next = this.persist[this.flip ^ 1]
+    this.flip ^= 1
+
+    gl.useProgram(this.progBeam)
+    this.bind(next)
+    this.unit(this.progBeam, 'uSrc', this.spot.tex, 0)
+    this.unit(this.progBeam, 'uPrev', prev.tex, 1)
+    gl.uniform2f(this.progBeam.u.uSrcSize, this.srcW, this.srcH)
+    gl.uniform2f(this.progBeam.u.uOutSize, next.w, next.h)
+    gl.uniform1f(this.progBeam.u.uDecay, P.decay)
+    gl.uniform1f(this.progBeam.u.uScanMin, P.scanMin)
+    gl.uniform1f(this.progBeam.u.uScanMax, P.scanMax)
+    this.draw()
+
+    // --- bloom ---
+    gl.useProgram(this.progBlur)
+    this.bind(this.bloom[0])
+    this.unit(this.progBlur, 'uTex', next.tex, 0)
+    gl.uniform2f(this.progBlur.u.uOutSize, this.bloom[0].w, this.bloom[0].h)
+    gl.uniform2f(this.progBlur.u.uDir, 1, 0)
+    gl.uniform1f(this.progBlur.u.uThreshold, P.threshold)
+    this.draw()
+
+    this.bind(this.bloom[1])
+    this.unit(this.progBlur, 'uTex', this.bloom[0].tex, 0)
+    gl.uniform2f(this.progBlur.u.uOutSize, this.bloom[1].w, this.bloom[1].h)
+    gl.uniform2f(this.progBlur.u.uDir, 0, 1)
+    gl.uniform1f(this.progBlur.u.uThreshold, 0)
+    this.draw()
+
+    // --- composite ---
+    gl.useProgram(this.progComp)
+    this.bind(null)
+    this.unit(this.progComp, 'uScreen', next.tex, 0)
+    this.unit(this.progComp, 'uBloom', this.bloom[1].tex, 1)
+    const u = this.progComp.u
+    gl.uniform2f(u.uRes, this.canvas.width, this.canvas.height)
+    // 2026-09-12 (audit, L11): the clock is wrapped HERE, in double
+    // precision, before it becomes a float32 uniform. The shader used to do
+    // `mod(floor(uTime * 60.0), 1024.0)`, which wraps nothing: by the time
+    // uTime is in the tens of thousands (a tab left open for a day) the
+    // float32 has already dropped the per-frame step the mod was meant to
+    // protect, and the roll bar's `uTime * uRollSpeed` had the same
+    // problem with no wrap at all -- measured with Math.fround, the bar's
+    // per-frame step drifts by ~7% at 24h, judders at 48h, and the grain
+    // starts skipping frames at ~77h. Wrapping at 1024 keeps the value
+    // small enough that float32 resolves 1/60s comfortably, and 1024 * 60
+    // is a whole number of frames so the noise counter is seamless across
+    // the wrap. The roll bar is not driven by this clock any more: its
+    // phase is integrated per frame in [0, 1) (advanceRollPhase), which is
+    // continuous across the wrap for any speed, AND continuous across a
+    // speed change -- the old `time * speed` form teleported the bar to an
+    // unrelated phase whenever a glitch ramped rollSpeed, which the tween
+    // in rampCrtParams was never asking for.
+    const dt = this._lastTime == null ? 0 : time - this._lastTime
+    this._lastTime = time
+    this._rollPhase = advanceRollPhase(this._rollPhase || 0, dt, P.rollSpeed)
+    gl.uniform1f(u.uTime, wrapClock(time))
+    gl.uniform3fv(u.uPhosphor, this.phosphor)
+    gl.uniform1f(u.uFill, P.fill)
+    // 4/3 for a television. Portrait values exist for a phone, where a 4:3
+    // face letterboxes into a strip: see MOBILE_CRT_OVERRIDE in crt-hooks.js.
+    gl.uniform1f(u.uAspect, P.aspect || 4 / 3)
+    gl.uniform1f(u.uCurve, P.curve)
+    gl.uniform1f(u.uBloomAmt, P.bloomAmt)
+    gl.uniform1f(u.uMaskAmt, P.maskAmt)
+    gl.uniform1f(u.uMaskPitch, P.maskPitch * (this.dpr || 1))
+    gl.uniform1f(u.uVignette, P.vignette)
+    gl.uniform1f(u.uNoise, P.noise)
+    // In device pixels, so the streak is the same physical size at any
+    // composite resolution.
+    gl.uniform1f(u.uNoiseStreak, P.noiseStreak * (this.dpr || 1))
+    gl.uniform1f(u.uSnow, P.snow)
+    gl.uniform1f(u.uFlicker, P.flicker)
+    gl.uniform1f(u.uRoll, P.roll)
+    gl.uniform1f(u.uRollPhase, this._rollPhase)
+    gl.uniform1f(u.uChroma, P.chroma)
+    gl.uniform1f(u.uBrightness, P.brightness)
+    gl.uniform1f(u.uAmbient, P.ambient)
+    gl.uniform1f(u.uAmbientFalloff, P.ambientFalloff)
+    gl.uniform1f(u.uBg, P.bg)
+    gl.uniform1f(u.uGlass, P.glass)
+    gl.uniform1f(u.uColor, this.color ? 1 : 0)
+    this.draw()
+  }
+
+  // Browsers cap live WebGL contexts (~16) and drop the oldest past that, so
+  // repeated mounts would kill other canvases on the page.
+  dispose() {
+    if (this.disposed) return
+    this.disposed = true
+    const gl = this.gl
+    for (const p of this.programs) gl.deleteProgram(p)
+    for (const t of this.textures) gl.deleteTexture(t)
+    for (const f of this.framebuffers) gl.deleteFramebuffer(f)
+    gl.deleteVertexArray(this.vao)
+    this._ro?.disconnect()
+    this.programs = []
+    this.textures = []
+    this.framebuffers = []
+    gl.getExtension('WEBGL_lose_context')?.loseContext()
+  }
+}

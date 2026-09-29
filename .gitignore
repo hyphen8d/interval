@@ -1,0 +1,13 @@
+.DS_Store
+.claude/
+*.log
+# Write-to-temp residue from tools/admin-server.mjs (`.<file>.tmp-<pid>`,
+# renamed into place on success). SHIP stages with `git add -A`, so a crash
+# between the write and the rename would otherwise be committed and pushed.
+*.tmp-*
+# tools/feed-watch.mjs's per-machine memory (when it last ran here, and how
+# the last runs went). tools/feed-health.json beside it is shared and is
+# committed; this is timer state for one box.
+tools/feed-watch-state.json
+dist/
+node_modules/

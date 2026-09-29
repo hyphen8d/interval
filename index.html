@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>INTERVAL - teletext for the SIGNAL network</title>
+<meta name="description" content="A teletext service on a simulated CRT: live news, weather, the sky, earthquakes and SIGNAL's radio listings, keyed by page number and sent round on a loop.">
+<meta name="author" content="Hyphen8d">
+<meta name="theme-color" content="#000000">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="INTERVAL">
+<meta property="og:title" content="INTERVAL - teletext for the SIGNAL network">
+<meta property="og:description" content="Live pages of text on a CRT, keyed by number and sent round on a loop.">
+<meta property="og:url" content="https://hyphen8d.github.io/interval/">
+<!-- The favicon is page 100's masthead: a blue band with yellow text. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%23000'/%3E%3Crect x='3' y='6' width='26' height='9' fill='%232a3cff'/%3E%3Crect x='5' y='8' width='14' height='5' fill='%23ffe81f'/%3E%3Crect x='3' y='18' width='6' height='3' fill='%23ff2e26'/%3E%3Crect x='10' y='18' width='6' height='3' fill='%232ee842'/%3E%3Crect x='17' y='18' width='6' height='3' fill='%23ffec34'/%3E%3Crect x='24' y='18' width='5' height='3' fill='%2330ecff'/%3E%3Crect x='3' y='23' width='20' height='2' fill='%23f6f6f6'/%3E%3C/svg%3E">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; flex-direction: column; }
+  #tube { display: block; flex: 1 1 auto; min-height: 0; width: 100%; cursor: none; touch-action: none; }
+  #fault {
+    position: fixed; inset: 0; display: none; padding: 2rem; color: #ffe81f;
+    font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; background: #000;
+  }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+  }
+  #ytDock { position: fixed; left: -9999px; top: -9999px; width: 200px; height: 200px; }
+
+  /* The remote. A television is driven from the sofa, not from the set, so a
+     touch screen gets a remote control under the tube rather than gestures on
+     the picture. Shown for a coarse pointer, or with ?remote=1. */
+  #remote {
+    display: none; flex: 0 0 auto; background: linear-gradient(#1c1e22, #111215);
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); gap: 8px;
+    font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e8e9ec;
+    border-top: 1px solid #2a2d33;
+  }
+  body.remote #remote { display: grid; grid-template-columns: repeat(5, 1fr); }
+  #remote button {
+    appearance: none; border: 0; border-radius: 8px; min-height: 40px; padding: 0 4px;
+    background: linear-gradient(#383c44, #292c32); color: inherit; font: inherit;
+    box-shadow: 0 2px 0 #0a0b0d, inset 0 1px 0 #4a4f58; touch-action: manipulation;
+  }
+  #remote button:active { transform: translateY(1px); box-shadow: 0 1px 0 #0a0b0d; }
+  #remote .small { font-size: 10px; letter-spacing: .05em; }
+  #remote .red { background: #e0322b; color: #fff; }
+  #remote .green { background: #2fb84c; color: #111; }
+  #remote .yellow { background: #e9c521; color: #111; }
+  #remote .cyan { background: #1fb3c9; color: #111; }
+  #remote .power { color: #ff5d52; }
+  #remote .wide { grid-column: span 2; }
+  @media (min-width: 700px) {
+    body.remote #remote { grid-template-columns: repeat(10, 1fr); max-width: 900px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+  }
+</style>
+</head>
+<body>
+  <div id="about" class="sr-only">
+    <h1>INTERVAL: a teletext service, rendered on a simulated television</h1>
+    <p>Pages of live text: news, most read articles, technology, on this day,
+      weather, the moon, space weather, earthquakes, and the listings for the
+      SIGNAL radio network. Each page is announced as it arrives.</p>
+    <p>Keys: P switches the set on or off. Type a three digit page number to
+      go to a page; 100 is the index and 199 is help. Up and down arrows go to
+      the next or previous page, left and right step through subpages. F1 to
+      F4, or Shift and 1 to 4, follow the four coloured links. I goes to the
+      index. R reveals hidden answers. H holds the page that is up. S changes
+      the size. C changes between colour, black and white, and a monitor. N
+      turns the overnight pages on or off, M mutes the overnight music, F is
+      full screen, and Escape clears a half-keyed number.</p>
+  </div>
+  <div id="announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <canvas id="tube" role="img" aria-label="The television screen. Each page is read out as it arrives."></canvas>
+  <div id="remote" role="group" aria-label="Remote control">
+    <button class="power small" data-key="p" aria-label="Power">POWER</button>
+    <button class="small" data-key="i">INDEX</button>
+    <button class="small" data-key="r">REVEAL</button>
+    <button class="small" data-key="h">HOLD</button>
+    <button class="small" data-key="s">SIZE</button>
+    <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+    <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+    <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+    <button data-key="0">0</button>
+    <button class="red" data-key="F1" aria-label="Red link">&nbsp;</button>
+    <button class="green" data-key="F2" aria-label="Green link">&nbsp;</button>
+    <button class="yellow" data-key="F3" aria-label="Yellow link">&nbsp;</button>
+    <button class="cyan" data-key="F4" aria-label="Cyan link">&nbsp;</button>
+    <button class="small" data-key="ArrowUp" aria-label="Next page">P+</button>
+    <button class="small" data-key="ArrowLeft" aria-label="Previous subpage">&lt; SUB</button>
+    <button class="small" data-key="ArrowRight" aria-label="Next subpage">SUB &gt;</button>
+    <button class="small" data-key="ArrowDown" aria-label="Previous page">P-</button>
+    <button class="small" data-key="c">COLOUR</button>
+    <button class="small" data-key="n">NIGHT</button>
+  </div>
+  <div id="ytDock"></div>
+  <pre id="fault"></pre>
+  <script>
+    // The overnight music loads the YouTube IFrame API on demand; program.js
+    // queues its player-making function here so load order cannot race it.
+    window.INTERVAL_YT_QUEUE = [];
+    window.onYouTubeIframeAPIReady = function () {
+      window.INTERVAL_YT_QUEUE.forEach(function (fn) { fn(); });
+      window.INTERVAL_YT_QUEUE = [];
+    };
+    (function () {
+      var q = new URLSearchParams(location.search);
+      if (q.get('remote') === '1' || (window.matchMedia && matchMedia('(pointer: coarse)').matches)) {
+        document.body.classList.add('remote');
+      }
+      var press = function (key) {
+        if (window.INTERVAL_PRESS) window.INTERVAL_PRESS(key);
+      };
+      document.getElementById('remote').addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-key]');
+        if (b) press(b.dataset.key);
+      });
+      // A tap on the picture of a set in standby switches it on.
+      document.getElementById('tube').addEventListener('click', function () {
+        if (window.screen0 && window.screen0.program && !window.screen0.program.power) press('p');
+      });
+    })();
+  </script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
