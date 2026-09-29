@@ -31,23 +31,119 @@
     }
   ],
   "quiz": [
-    { "q": "Which line of the TV picture carried US closed captions?", "a": "LINE 21" },
-    { "q": "What did the BBC call its teletext service?", "a": "CEEFAX" },
-    { "q": "What was ITV's teletext service called from 1978 to 1992?", "a": "ORACLE" },
-    { "q": "How many colours could a teletext page use, counting black?", "a": "EIGHT" },
-    { "q": "Into how many blocks does a mosaic graphic split a cell?", "a": "SIX, TWO BY THREE" },
-    { "q": "What does VBI stand for?", "a": "VERTICAL BLANKING INTERVAL" },
-    { "q": "In what year did Ceefax go off the air?", "a": "2012" },
-    { "q": "Which SIGNAL station sits at 808.0 on the YM band?", "a": "HACKBACK" }
+    {
+      "q": "Which line of the TV picture carried US closed captions?",
+      "a": "LINE 21"
+    },
+    {
+      "q": "What did the BBC call its teletext service?",
+      "a": "CEEFAX"
+    },
+    {
+      "q": "What was ITV's teletext service called from 1978 to 1992?",
+      "a": "ORACLE"
+    },
+    {
+      "q": "How many colours could a teletext page use, counting black?",
+      "a": "EIGHT"
+    },
+    {
+      "q": "Into how many blocks does a mosaic graphic split a cell?",
+      "a": "SIX, TWO BY THREE"
+    },
+    {
+      "q": "What does VBI stand for?",
+      "a": "VERTICAL BLANKING INTERVAL"
+    },
+    {
+      "q": "In what year did Ceefax go off the air?",
+      "a": "2012"
+    },
+    {
+      "q": "Which SIGNAL station sits at 808.0 on the YM band?",
+      "a": "HACKBACK"
+    }
   ],
   "fourkeys": [
-    { "q": "The BBC's teletext service was called...", "options": ["CEEFAX", "ORACLE", "PRESTEL", "VIEWDATA"], "answer": 0 },
-    { "q": "Ceefax first went on air in...", "options": ["1970", "1974", "1979", "1983"], "answer": 1 },
-    { "q": "A mosaic graphic splits a cell into how many blocks?", "options": ["FOUR", "SIX", "EIGHT", "NINE"], "answer": 1 },
-    { "q": "Line 21 of the picture carried...", "options": ["TELETEXT", "CAPTIONS", "TIMECODE", "STEREO"], "answer": 1 },
-    { "q": "Which is NOT one of the teletext colours?", "options": ["MAGENTA", "CYAN", "ORANGE", "YELLOW"], "answer": 2 },
-    { "q": "How many characters fit on a teletext row?", "options": ["32", "40", "64", "80"], "answer": 1 },
-    { "q": "Ceefax was switched off for good in...", "options": ["2002", "2008", "2012", "2016"], "answer": 2 },
-    { "q": "The lowest page number a set could key was...", "options": ["000", "001", "100", "101"], "answer": 2 }
+    {
+      "q": "The BBC's teletext service was called...",
+      "options": [
+        "CEEFAX",
+        "ORACLE",
+        "PRESTEL",
+        "VIEWDATA"
+      ],
+      "answer": 0
+    },
+    {
+      "q": "Ceefax first went on air in...",
+      "options": [
+        "1970",
+        "1974",
+        "1979",
+        "1983"
+      ],
+      "answer": 1
+    },
+    {
+      "q": "A mosaic graphic splits a cell into how many blocks?",
+      "options": [
+        "FOUR",
+        "SIX",
+        "EIGHT",
+        "NINE"
+      ],
+      "answer": 1
+    },
+    {
+      "q": "Line 21 of the picture carried...",
+      "options": [
+        "TELETEXT",
+        "CAPTIONS",
+        "TIMECODE",
+        "STEREO"
+      ],
+      "answer": 1
+    },
+    {
+      "q": "Which is NOT one of the teletext colours?",
+      "options": [
+        "MAGENTA",
+        "CYAN",
+        "ORANGE",
+        "YELLOW"
+      ],
+      "answer": 2
+    },
+    {
+      "q": "How many characters fit on a teletext row?",
+      "options": [
+        "32",
+        "40",
+        "64",
+        "80"
+      ],
+      "answer": 1
+    },
+    {
+      "q": "Ceefax was switched off for good in...",
+      "options": [
+        "2002",
+        "2008",
+        "2012",
+        "2016"
+      ],
+      "answer": 2
+    },
+    {
+      "q": "The lowest page number a set could key was...",
+      "options": [
+        "000",
+        "001",
+        "100",
+        "101"
+      ],
+      "answer": 2
+    }
   ]
 }

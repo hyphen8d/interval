@@ -243,7 +243,9 @@ export class Page {
   fast(entries) {
     this.fastext = entries.slice(0, 4)
     this.fastext.forEach((e, i) => {
-      if (e) this.text(FASTEXT_ROW, i * 10, clip(e[0], 10), FASTEXT_COLOURS[i])
+      // Nine, not ten: a label that fills its slot runs into the next one
+      // ("Other bandIndex" on the first real render).
+      if (e) this.text(FASTEXT_ROW, i * 10, clip(e[0], 9), FASTEXT_COLOURS[i])
     })
   }
 

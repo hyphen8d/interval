@@ -19,14 +19,18 @@
 // are the masthead, the body is rows 4-21, row 22 is spare, row 23 is the
 // credit line and row 24 the fastext row. The set writes row 0.
 
-import {
-  Page, pixels, hash2, wrapText, clip, fold,
+// Siblings are imported as ?v=<build>, like every app module (see main.js):
+// a bare import would be cached across a deploy and pair this file with a
+// stale copy of the one it imports.
+const V = globalThis.INTERVAL_BUILD ?? ''
+const {
+  Page, pixels, hash2, wrapText, clip,
   BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, COLS,
-} from './teletext.js'
-import { KEYS, FASTEXT_ALT } from './constants.js'
-import { moon, litAt, dayLength } from './sky.js'
-import { FEEDS, staleAfter } from './feeds.js'
-import { drawLines } from './markup.js'
+} = await import(`./teletext.js?v=${V}`)
+const { KEYS, FASTEXT_ALT } = await import(`./constants.js?v=${V}`)
+const { moon, litAt, dayLength } = await import(`./sky.js?v=${V}`)
+const { FEEDS, staleAfter } = await import(`./feeds.js?v=${V}`)
+const { drawLines } = await import(`./markup.js?v=${V}`)
 
 export const BODY_TOP = 4
 export const BODY_BOTTOM = 21
@@ -264,7 +268,7 @@ page('102', 'Ongoing and recent deaths', {
       }
       return listPage('102', 'ONGOING', blocks, ctx, {
         feed: 'itn', right: 'NEWS', gap: 0,
-        fast: [['Headlines', '101'], ['Most read', '104'], ['On this day', '200'], ['Index', '100']],
+        fast: [['Headlines', '101'], ['Most read', '104'], ['This day', '200'], ['Index', '100']],
       })
     })
   },
@@ -315,16 +319,15 @@ page('150', 'Tech: top of Hacker News', {
   },
 })
 
-page('190', 'Notices from the network', {
-  render(ctx) {
-    const n = (ctx.editorial.notices || []).find(x => x.page === '190') || { title: 'NOTICES', lines: [] }
-    const p = new Page()
-    masthead(p, '190', n.title || 'NOTICES', { right: 'INTERVAL' })
-    drawLines(p, n.lines || [], BODY_TOP, 1)
-    p.fast([['Index', '100'], ['Help', '199'], ['SIGNAL', '500'], ['Overnight', '800']])
-    return [p]
-  },
-})
+/** A notice page: written in the admin dashboard, stored in editorial.json,
+ *  drawn from its markup (markup.js). Any number no fixed page uses. */
+function noticePage(n) {
+  const p = new Page()
+  masthead(p, n.page, n.title || 'NOTICES', { right: 'INTERVAL' })
+  drawLines(p, n.lines || [], BODY_TOP, 1)
+  p.fast([['Index', '100'], ['Help', '199'], ['SIGNAL', '500'], ['Overnight', '800']])
+  return p
+}
 
 page('199', 'Help: using the set', {
   render() {
@@ -389,7 +392,7 @@ page('1FF', 'Four keys: a hidden game', {
     } else {
       p.double(18, 1, g.answered === q.answer ? 'RIGHT!' : 'NOT THIS TIME', g.answered === q.answer ? GREEN : RED)
       p.text(21, 1, `BEST ${g.best}  QUESTION ${(g.i % qs.length) + 1} OF ${qs.length}`, CYAN)
-      p.fast([['Next', 'game:next'], ['Index', '100'], null, ['Start over', 'game:reset']])
+      p.fast([['Next', 'game:next'], ['Index', '100'], null, ['Restart', 'game:reset']])
     }
     return [p]
   },
@@ -426,7 +429,7 @@ for (const [num, title, key, heading] of [
       return gate(ctx, num, heading, ['otd'], ({ otd }) =>
         listPage(num, heading, otd[key].slice(0, 24).map(e => textBlock(String(e.year ?? ''), e.text, { width: 38 })), ctx, {
           feed: 'otd', right: 'ON THIS DAY',
-          fast: [['On this day', '200'], ['Events', '201'], ['Births', '202'], ['Deaths', '203']],
+          fast: [['This day', '200'], ['Events', '201'], ['Births', '202'], ['Deaths', '203']],
         }))
     },
   })
@@ -454,7 +457,7 @@ page('250', 'Article of the day', {
         }
         chunk.forEach(l => { if (r <= BODY_BOTTOM) p.text(r++, 1, l, WHITE) })
         creditLine(p, ctx, 'featured')
-        p.fast([['Most read', '104'], ['On this day', '200'], ['News', '101'], ['Index', '100']])
+        p.fast([['Most read', '104'], ['This day', '200'], ['News', '101'], ['Index', '100']])
         return p
       })
     })
@@ -480,7 +483,7 @@ function weatherGate(num, title, ctx, fn) {
     ]
     let r = BODY_TOP + 3
     for (const para of copy) r = p.wrap(r, 1, para, 38, WHITE) + 1
-    p.fast([loc === 'insecure' || loc === 'unsupported' || loc === 'asking' ? null : ['Share location', 'locate'], ['Sky', '310'], ['Space', '320'], ['Index', '100']])
+    p.fast([loc === 'insecure' || loc === 'unsupported' || loc === 'asking' ? null : ['Locate me', 'locate'], ['Sky', '310'], ['Space', '320'], ['Index', '100']])
     return [p]
   }
   return gate(ctx, num, title, ['weather'], ({ weather }) => fn(weather))
@@ -685,7 +688,7 @@ page('500', 'SIGNAL listings', {
           r += 2
         }
         creditLine(p, ctx, 'signal')
-        p.fast([['First', pages.find(x => x.station.band === band)?.num ?? '500'], ['Overnight', '800'], ['Other band', 'sub:next'], ['Index', '100']])
+        p.fast([['First', pages.find(x => x.station.band === band)?.num ?? '500'], ['Overnight', '800'], ['Band', 'sub:next'], ['Index', '100']])
         return p
       })
     })
@@ -718,7 +721,7 @@ page('600', 'Quiz', {
     for (let i = 0; i < Math.max(1, qs.length); i += per) chunks.push(qs.slice(i, i + per))
     return chunks.map((chunk, i) => {
       const p = new Page()
-      masthead(p, '600', 'QUIZ', { sub: i, subs: chunks.length, right: 'PRESS REVEAL' })
+      masthead(p, '600', 'QUIZ', { sub: i, subs: chunks.length, right: 'R REVEALS' })
       let r = BODY_TOP
       chunk.forEach((q, k) => {
         p.text(r, 1, String(i * per + k + 1).padStart(2), YELLOW)
@@ -875,6 +878,8 @@ export const PAGES = new Map(defs.map(d => [d.num, d]))
 export function pageDef(num, ctx) {
   const n = String(num).toUpperCase()
   if (PAGES.has(n)) return PAGES.get(n)
+  const notice = (ctx?.editorial?.notices || []).find(x => String(x.page).toUpperCase() === n)
+  if (notice) return { num: n, title: `Notice: ${notice.title || n}`, feeds: [], render: () => [noticePage({ ...notice, page: n })] }
   const roster = ctx?.entry?.('signal')?.data
   if (roster && /^5[12]\d$/.test(n)) {
     const all = stationPages(roster)
@@ -888,6 +893,7 @@ export function pageDef(num, ctx) {
  *  station pages included once the roster is in. */
 export function pageOrder(ctx) {
   const nums = defs.filter(d => !d.hidden).map(d => d.num)
+  for (const n of ctx?.editorial?.notices || []) nums.push(String(n.page).toUpperCase())
   const roster = ctx?.entry?.('signal')?.data
   if (roster) nums.push(...stationPages(roster).map(x => x.num))
   return [...new Set(nums)].sort((a, b) => parseInt(a, 16) - parseInt(b, 16))

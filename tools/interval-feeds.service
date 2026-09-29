@@ -1,0 +1,8 @@
+# INTERVAL feed watch -- REFERENCE COPY, see interval-feeds.timer.
+[Unit]
+Description=INTERVAL feed watch (probe every source; notify on a confirmed failure)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/hyphen8d/Work/interval
+ExecStart=/home/hyphen8d/.local/share/mise/shims/node tools/feed-watch.mjs

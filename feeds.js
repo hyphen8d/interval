@@ -15,7 +15,11 @@
 // return (tests/fixtures holds a capture of each, dated in its README), so a
 // source changing shape fails a test here rather than showing a blank page.
 
-import { fold } from './teletext.js'
+// Siblings are imported as ?v=<build>, like every app module (see main.js):
+// a bare import would be cached across a deploy and pair this file with a
+// stale copy of the one it imports.
+const V = globalThis.INTERVAL_BUILD ?? ''
+const { fold } = await import(`./teletext.js?v=${V}`)
 
 // ---------------------------------------------------------------------------
 // Parsers

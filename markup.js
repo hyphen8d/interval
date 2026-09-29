@@ -11,7 +11,11 @@
 // Anything else in square brackets is text. A line's width is its length
 // with the tags removed, and the lint holds that to 40.
 
-import { fold, COLS, WHITE, BLACK } from './teletext.js'
+// Siblings are imported as ?v=<build>, like every app module (see main.js):
+// a bare import would be cached across a deploy and pair this file with a
+// stale copy of the one it imports.
+const V = globalThis.INTERVAL_BUILD ?? ''
+const { fold, COLS, WHITE, BLACK } = await import(`./teletext.js?v=${V}`)
 
 const COLOUR_LETTERS = { k: 0, r: 1, g: 2, y: 3, b: 4, m: 5, c: 6, w: 7 }
 

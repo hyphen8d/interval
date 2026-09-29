@@ -1,1 +1,16 @@
-{"type":"module"}
+{
+  "name": "interval",
+  "private": true,
+  "type": "module",
+  "description": "No dependencies and no build step -- this file only marks the repo as ES modules and names the scripts.",
+  "scripts": {
+    "admin": "node tools/admin-server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "lint": "node tools/lint-pages.mjs",
+    "health": "node tools/check-feeds.mjs",
+    "watch": "node tools/feed-watch.mjs",
+    "capture": "node tools/capture-fixtures.mjs",
+    "stamp": "node tools/stamp.js",
+    "shoot": "node tools/shoot.mjs"
+  }
+}

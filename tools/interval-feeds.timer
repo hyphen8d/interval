@@ -1,0 +1,21 @@
+# INTERVAL feed watch timer -- a REFERENCE COPY, not installed. To install:
+#   cp tools/interval-feeds.{service,timer} ~/.config/systemd/user/
+#   systemctl --user enable --now interval-feeds.timer
+#
+# Twice a day. A failure has to be seen on two consecutive runs before it
+# notifies (feed-watch.mjs), so this cadence means a real outage reaches you
+# within about twelve hours, and a source's bad minute never does. Unlike
+# SIGNAL's roster sweep there is no throttle to respect: eight requests.
+# Check the notification path once after installing -- notify-send in a user
+# unit dies silently without the session bus (SIGNAL, 2026-08-30).
+
+[Unit]
+Description=Run the INTERVAL feed watch twice a day
+
+[Timer]
+OnCalendar=*-*-* 08,20:15:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

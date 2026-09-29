@@ -124,7 +124,7 @@ const program = {
     } catch (e) {}
     try { this.buildCheck = setInterval(() => this.checkBuild(), BUILD_CHECK_MS) } catch (e) {}
 
-    if (q.get('power') === 'on') this.powerUp()
+    if (q.get('power') === 'on') this.powerUp({ quiet: true })
   },
 
   // ---------------------------------------------------------------- effects
@@ -155,12 +155,14 @@ const program = {
   },
 
   // ---------------------------------------------------------------- power
-  powerUp() {
+  /** `quiet` is for a power-on nobody pressed for (?power=on, the dashboard's
+   *  preview): a browser refuses sound without a gesture, and trying only
+   *  fills the console with autoplay warnings. */
+  powerUp({ quiet = false } = {}) {
     if (this.power) return
     this.power = true
     this.lastKeyAt = perf()
-    sfx.playPowerOn()
-    sfx.startHum()
+    if (!quiet) { sfx.playPowerOn(); sfx.startHum() }
     const p = this.s.crt.params
     // The tube warming: the picture comes up out of black over a second, with
     // a bloom that settles as it does.

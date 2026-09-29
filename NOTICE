@@ -1,0 +1,43 @@
+INTERVAL
+Copyright (c) 2026 Matthew Arevalo
+
+This file accompanies LICENSE and does not modify it. LICENSE covers
+INTERVAL itself; the components below are vendored into this repository,
+are not INTERVAL's to license, and keep their own terms.
+
+--------------------------------------------------------------------------
+src/ -- cyberspace-crt
+
+    Copyright (c) 2026 Unremarkable Garden
+
+    The WebGL2 CRT text-grid engine, vendored via SIGNAL and licensed under
+    the MIT License on the same terms as LICENSE. INTERVAL adds a colour
+    plane to it (src/cellgrid.js, src/term.js, src/crt.js, src/screen.js;
+    each change is marked "2026-09-28, INTERVAL"). Without a palette in the
+    config the engine behaves exactly as upstream.
+
+    INTERVAL is not affiliated with, endorsed by, or hosted by Cyberspace.
+    Upstream: https://github.com/unremarkablegarden/cyberspace-crt
+
+    The degauss sound (sfx.js) is adapted from Cyberspace TERMINAL by the
+    same author, under the same MIT terms, by way of SIGNAL.
+
+--------------------------------------------------------------------------
+fonts/ -- Terminus Font
+
+    Copyright (C) 2014 Dimitar Toshkov Zhekov
+
+    NOT covered by the MIT terms in LICENSE. Licensed under the SIL Open
+    Font License 1.1; the full text is in fonts/OFL.txt.
+
+--------------------------------------------------------------------------
+Page content
+
+    News, On this day, the featured article and the most-read list come
+    from Wikipedia, whose text is CC BY-SA 4.0; each page credits it on its
+    source line. Earthquakes: USGS (public domain). Space weather: NOAA
+    SWPC (public domain). Forecasts: Open-Meteo (CC BY 4.0). Tech: Hacker
+    News. Station listings: SIGNAL.
+
+    Teletext, Ceefax and Oracle are other people's names; INTERVAL uses
+    none of them for itself.

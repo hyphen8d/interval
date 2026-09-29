@@ -1,0 +1,32 @@
+# INTERVAL admin backend -- a REFERENCE COPY. Not installed by anything:
+# copy it to ~/.config/systemd/user/ and `systemctl --user enable --now
+# interval-admin` if you want it running the way SIGNAL's admin does.
+#
+# Bound to the tailnet, not loopback, because this box is worked on over SSH.
+# There is NO password on this service and it can commit and push, so what
+# protects it is the tailnet being an authenticated mesh plus the server's
+# Host allowlist. Do not move it to 0.0.0.0. Port 8081: SIGNAL's admin has 8080.
+#
+#   systemctl --user status interval-admin
+#   systemctl --user restart interval-admin    # after editing admin-server.mjs
+#   journalctl --user -u interval-admin -f
+
+[Unit]
+Description=INTERVAL admin backend (pages, editorial, sources, ship)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/hyphen8d/Work/interval
+# The mise shim, not a versioned node path, so a node upgrade does not
+# strand the unit (SIGNAL's unit carries the longer note).
+ExecStart=/home/hyphen8d/.local/share/mise/shims/node tools/admin-server.mjs --host=tailscale 8081
+# At boot this loses the race with tailscaled and exits; Restart= with no
+# rate limit is what brings it up once the interface exists.
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=0
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

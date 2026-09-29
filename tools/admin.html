@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>INTERVAL admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%23000'/%3E%3Crect x='3' y='6' width='26' height='9' fill='%23ff2e26'/%3E%3Crect x='5' y='8' width='14' height='5' fill='%23fff'/%3E%3C/svg%3E">
+<!--
+  The INTERVAL admin dashboard. Served by tools/admin-server.mjs at /admin;
+  it will not work opened as a file (a file:// page cannot import the page
+  modules, and those imports are the point -- see below).
+
+  Previews are drawn from the SAME modules the set runs (pages.js,
+  teletext.js, feeds.js) and the SAME font, rasterised cell for cell the way
+  src/term.js does, so what this page shows is what the tube will show minus
+  the glass. Live data comes from the browser's own fetch of each source,
+  which makes the SOURCES tab's "this browser" column a real CORS test, not
+  a report of one.
+-->
+<style>
+  :root {
+    --bg: #0d0e11; --panel: #15171b; --line: #262a31; --ink: #e4e6ea; --muted: #8a909c;
+    --red: #ff2e26; --green: #2ee842; --yellow: #ffec34; --blue: #3c56ff; --magenta: #ff38de; --cyan: #30ecff;
+    --mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.5 var(--mono); }
+  header {
+    display: flex; gap: 18px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: var(--bg); z-index: 5; flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: .12em; color: var(--yellow); }
+  header .meta { color: var(--muted); }
+  header .meta b { color: var(--ink); font-weight: 500; }
+  nav { display: flex; gap: 4px; margin-left: auto; }
+  nav button { background: none; border: 1px solid var(--line); color: var(--muted); padding: 5px 12px; font: inherit; cursor: pointer; border-radius: 3px; }
+  nav button[aria-selected="true"] { color: #000; background: var(--cyan); border-color: var(--cyan); }
+  main { padding: 16px 18px 40px; }
+  section[hidden] { display: none !important; }
+  .grid { display: grid; gap: 16px; }
+  .pages-grid { grid-template-columns: 250px minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  @media (max-width: 1200px) { .pages-grid { grid-template-columns: 220px minmax(0, 1fr); } .set-col { grid-column: 1 / -1; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 12px; min-width: 0; }
+  .panel h2 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; font-weight: 500; }
+  .pagelist { max-height: calc(100vh - 140px); overflow: auto; }
+  .pagelist button {
+    display: grid; grid-template-columns: 38px 1fr auto; gap: 6px; width: 100%; text-align: left; padding: 4px 6px;
+    background: none; border: 0; color: var(--ink); font: inherit; cursor: pointer; border-radius: 3px; align-items: center;
+  }
+  .pagelist button:hover { background: #1d2026; }
+  .pagelist button[aria-current="true"] { background: #232833; outline: 1px solid var(--cyan); }
+  .pagelist .num { color: var(--cyan); }
+  .pagelist .mag { font-size: 11px; color: var(--muted); padding: 8px 6px 2px; letter-spacing: .08em; }
+  .dots { display: flex; gap: 3px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #444; }
+  .dot.fresh { background: var(--green); } .dot.stale { background: var(--yellow); } .dot.error { background: var(--red); } .dot.loading { background: var(--cyan); }
+  canvas.tv { width: 100%; aspect-ratio: 4 / 3; image-rendering: pixelated; background: #000; border-radius: 6px; display: block; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  button.act {
+    background: #262a31; color: var(--ink); border: 1px solid #353a43; padding: 5px 11px; font: inherit; cursor: pointer; border-radius: 3px;
+  }
+  button.act:hover { border-color: var(--cyan); }
+  button.act.primary { background: var(--cyan); color: #000; border-color: var(--cyan); }
+  button.act.danger { background: var(--red); color: #fff; border-color: var(--red); }
+  button.act:disabled { opacity: .45; cursor: not-allowed; }
+  .muted { color: var(--muted); }
+  .ok { color: var(--green); } .bad { color: var(--red); } .warn { color: var(--yellow); }
+  pre.text { background: #000; padding: 8px; margin: 8px 0 0; overflow: auto; font-size: 12px; line-height: 1.35; border-radius: 3px; }
+  iframe.set { width: 100%; aspect-ratio: 4 / 3.3; border: 0; background: #000; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  input[type=text], input[type=number], textarea, select {
+    background: #0a0b0d; color: var(--ink); border: 1px solid #333842; font: inherit; padding: 5px 7px; border-radius: 3px; width: 100%;
+  }
+  textarea { min-height: 330px; resize: vertical; line-height: 1.45; }
+  label.f { display: grid; gap: 3px; color: var(--muted); font-size: 12px; }
+  .ed-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 1000px) { .ed-grid { grid-template-columns: 1fr; } }
+  .qrow { display: grid; grid-template-columns: 28px minmax(0, 1fr) 200px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .fkrow { border-top: 1px solid var(--line); padding: 8px 0; display: grid; gap: 6px; }
+  .fkopts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .fkopts label { display: grid; grid-template-columns: 16px 1fr; gap: 4px; align-items: center; }
+  .issues { margin: 8px 0 0; padding-left: 18px; }
+  .issues li.err { color: var(--red); } .issues li.warn { color: var(--yellow); }
+  #log { background: #000; height: 360px; overflow: auto; padding: 8px; font-size: 12px; white-space: pre-wrap; border-radius: 3px; margin-top: 10px; }
+  #log .cmd { color: var(--cyan); } #log .err { color: #ff8a80; } #log .step { color: var(--yellow); } #log .done { color: var(--green); }
+  .banner { padding: 8px 12px; border-radius: 3px; margin-bottom: 10px; }
+  .banner.late { background: #3a2600; color: var(--yellow); }
+  .banner.fail { background: #3a0c0a; color: #ff8a80; }
+  .kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; }
+  .chip { display: inline-block; padding: 0 6px; border-radius: 2px; color: #000; font-size: 11px; }
+  #connect { padding: 40px; max-width: 70ch; }
+</style>
+</head>
+<body>
+<header>
+  <h1>INTERVAL ADMIN</h1>
+  <span class="meta">build <b id="h-build">-</b></span>
+  <span class="meta">branch <b id="h-branch">-</b></span>
+  <span class="meta" id="h-dirty"></span>
+  <nav role="tablist">
+    <button role="tab" data-tab="pages" aria-selected="true">PAGES</button>
+    <button role="tab" data-tab="editorial" aria-selected="false">EDITORIAL</button>
+    <button role="tab" data-tab="sources" aria-selected="false">SOURCES</button>
+    <button role="tab" data-tab="ship" aria-selected="false">SHIP</button>
+  </nav>
+</header>
+<div id="connect" hidden>
+  <h2>Not connected to the admin server</h2>
+  <p class="muted">This page is served by the admin backend and talks to it. Start it from the repo:</p>
+  <pre class="text">npm run admin        # or: node tools/admin-server.mjs</pre>
+  <p class="muted">then open <b>http://127.0.0.1:8081/admin</b>. Over SSH, 127.0.0.1 names your own machine: tunnel with
+  <code>ssh -N -L 8081:127.0.0.1:8081 you@box</code>, or run it with <code>--host=tailscale</code>.</p>
+</div>
+<main>
+  <!-- PAGES -->
+  <section id="tab-pages" class="grid pages-grid">
+    <div class="panel pagelist" id="pagelist"><h2>Pages</h2></div>
+    <div class="panel">
+      <h2 id="pv-title">Preview</h2>
+      <canvas class="tv" id="pv" width="372" height="410"></canvas>
+      <div class="row">
+        <button class="act" id="pv-prev">&lt; sub</button>
+        <span id="pv-sub" class="muted">1/1</span>
+        <button class="act" id="pv-next">sub &gt;</button>
+        <label><input type="checkbox" id="pv-reveal"> reveal</label>
+        <label><input type="checkbox" id="pv-mono"> b&amp;w</label>
+        <button class="act" id="pv-open">open on the set</button>
+      </div>
+      <div id="pv-status" class="muted" style="margin-top:6px"></div>
+      <pre class="text" id="pv-text"></pre>
+    </div>
+    <div class="panel set-col">
+      <h2>The set</h2>
+      <iframe class="set" id="set" title="INTERVAL receiver" src="about:blank"></iframe>
+      <p class="muted">The real app, served from this working tree. Click it, then use the keyboard as a viewer would.</p>
+    </div>
+  </section>
+
+  <!-- EDITORIAL -->
+  <section id="tab-editorial" hidden>
+    <div class="row" style="margin:0 0 12px">
+      <button class="act" id="ed-check">check</button>
+      <button class="act primary" id="ed-save">save editorial.json</button>
+      <span id="ed-state" class="muted"></span>
+    </div>
+    <ul class="issues" id="ed-issues"></ul>
+    <div class="grid ed-grid">
+      <div class="panel">
+        <h2>Notice pages</h2>
+        <div class="row" style="margin:0 0 8px">
+          <select id="nt-pick" style="width:auto"></select>
+          <button class="act" id="nt-add">new page</button>
+          <button class="act" id="nt-del">remove</button>
+        </div>
+        <div class="grid" style="grid-template-columns:90px 1fr;gap:8px">
+          <label class="f">page <input type="text" id="nt-page" maxlength="3"></label>
+          <label class="f">title (26 max) <input type="text" id="nt-title" maxlength="40"></label>
+        </div>
+        <label class="f" style="margin-top:8px">lines &mdash; [y] [w] [c] [g] [r] [m] [b] colours, [bg=b] band, [?]hidden[/?], [!]flash[/!], [dh] double height
+          <textarea id="nt-lines" spellcheck="false"></textarea></label>
+      </div>
+      <div class="panel">
+        <h2>Notice preview</h2>
+        <canvas class="tv" id="nt-pv" width="372" height="410"></canvas>
+        <p class="muted" id="nt-widths"></p>
+      </div>
+      <div class="panel">
+        <h2>Quiz &mdash; page 600, answers concealed</h2>
+        <div id="qz"></div>
+        <button class="act" id="qz-add">add question</button>
+      </div>
+      <div class="panel">
+        <h2>Four keys &mdash; hidden page 1FF</h2>
+        <div id="fk"></div>
+        <button class="act" id="fk-add">add question</button>
+      </div>
+      <div class="panel">
+        <h2>Overnight &mdash; page 800</h2>
+        <div class="grid" style="grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
+          <label class="f">SIGNAL station <select id="on-station"></select></label>
+          <label class="f">from hour <input type="number" id="on-start" min="0" max="23"></label>
+          <label class="f">to hour <input type="number" id="on-end" min="0" max="23"></label>
+          <label class="f">idle minutes <input type="number" id="on-idle" min="1"></label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOURCES -->
+  <section id="tab-sources" hidden>
+    <div id="src-banner"></div>
+    <div class="panel">
+      <h2>Sources</h2>
+      <table>
+        <thead><tr><th>source</th><th>last probe (check-feeds)</th><th>strikes</th><th>this browser</th><th>detail</th></tr></thead>
+        <tbody id="src-rows"></tbody>
+      </table>
+      <div class="row">
+        <button class="act primary" id="src-probe">probe every source now (network)</button>
+        <button class="act" id="src-browser">re-fetch in this browser</button>
+        <span class="muted" id="src-watch"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- SHIP -->
+  <section id="tab-ship" hidden>
+    <div class="grid ed-grid">
+      <div class="panel">
+        <h2>Working tree</h2>
+        <div class="kv">
+          <span class="muted">branch</span><span id="sh-branch"></span>
+          <span class="muted">last commit</span><span id="sh-last"></span>
+          <span class="muted">upstream</span><span id="sh-up"></span>
+          <span class="muted">changed</span><span id="sh-dirty"></span>
+        </div>
+        <div class="row">
+          <button class="act" data-task="lint">lint</button>
+          <button class="act" data-task="test">test suite</button>
+          <button class="act" data-task="stamp">stamp</button>
+          <button class="act" data-task="health">probe sources</button>
+          <button class="act" data-task="capture">recapture fixtures</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Preflight and ship</h2>
+        <p class="muted">SHIP runs stamp &rarr; lint &rarr; suite, then <code>git add -A</code>, commit and push, stopping at the first failure with nothing committed. <code>add -A</code> means everything in the working tree goes.</p>
+        <label><input type="checkbox" id="sh-net"> include the network source probe</label>
+        <div class="row"><button class="act" id="sh-preflight">preflight</button></div>
+        <label class="f" style="margin-top:10px">commit message <input type="text" id="sh-msg"></label>
+        <label style="display:block;margin-top:6px"><input type="checkbox" id="sh-confirm"> I have looked at what is changed</label>
+        <div class="row"><button class="act danger" id="sh-ship" disabled>SHIP</button></div>
+      </div>
+    </div>
+    <div id="log" aria-live="polite"></div>
+  </section>
+</main>
+
+<script type="module">
+globalThis.INTERVAL_BUILD = `admin-${Date.now()}`
+const V = globalThis.INTERVAL_BUILD
+const T = await import(`/teletext.js?v=${V}`)
+const Pages = await import(`/pages.js?v=${V}`)
+const { FeedCache, FEEDS } = await import(`/feeds.js?v=${V}`)
+const { parseBDF } = await import(`/src/bdf.js`)
+const font = parseBDF(await (await fetch('/fonts/ter-u16b.bdf')).text())
+
+const $ = (id) => document.getElementById(id)
+const h = (tag, attrs = {}, ...kids) => {
+  const el = document.createElement(tag)
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith('on')) el.addEventListener(k.slice(2), v)
+    else if (v === true) el.setAttribute(k, '')
+    else if (v !== false && v != null) el.setAttribute(k, v)
+  }
+  for (const k of kids.flat()) if (k != null) el.append(k)
+  return el
+}
+const api = async (route, body) => {
+  const res = await fetch(`/api/${route}`, body === undefined ? {} : {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Interval-Admin': '1' }, body: JSON.stringify(body),
+  })
+  const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+  return { ok: res.ok, status: res.status, json }
+}
+
+// -------------------------------------------------------------- state
+let state = null
+try {
+  const r = await api('state')
+  if (!r.ok) throw new Error(r.json.error)
+  state = r.json
+} catch (e) {
+  $('connect').hidden = false
+  document.querySelector('main').hidden = true
+  throw e
+}
+let editorial = structuredClone(state.editorial)
+let dirty = false
+
+function renderHeader() {
+  $('h-build').textContent = state.build?.build ?? '(none)'
+  $('h-branch').textContent = state.git.branch
+  const n = state.git.dirty.length
+  $('h-dirty').innerHTML = n ? `<span class="warn">${n} changed</span>` : '<span class="ok">clean</span>'
+}
+renderHeader()
+
+// Tabs
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('nav button').forEach(x => x.setAttribute('aria-selected', String(x === b)))
+  document.querySelectorAll('main > section').forEach(s => { s.hidden = s.id !== `tab-${b.dataset.tab}` })
+  if (b.dataset.tab === 'sources') renderSources()
+  if (b.dataset.tab === 'ship') renderShip()
+  if (b.dataset.tab === 'editorial') renderNoticePreview()
+}))
+
+// -------------------------------------------------------------- live data
+// The browser's own FeedCache: the same object the set uses, so the preview
+// shows what a viewer's set would, and a source that refuses browsers shows
+// here as a failure however healthy it looks from Node.
+let location_ = null
+// The cache reports a change the moment a fetch STARTS, which is before the
+// renderers below exist; changes are ignored until the page has set up.
+let ready = false
+const feeds = new FeedCache({
+  fetch: (...a) => fetch(...a), now: () => Date.now(), storage: null,
+  env: { date: () => new Date(), get location() { return location_ }, units: navigator.language === 'en-US' ? 'F' : 'C', signalUrl: null, importModule: (u) => import(u) },
+  onChange: () => { if (!ready) return; renderPageList(); renderPreview(); if (!$('tab-sources').hidden) renderSources() },
+})
+// A fixed place for the weather preview: Greenwich, as check-feeds uses.
+location_ = { lat: 51.48, lon: 0.0 }
+for (const id of Object.keys(FEEDS)) feeds.ensure(id)
+
+const ctx = () => ({
+  entry: (id) => feeds.get(id), status: (id) => feeds.status(id), now: Date.now(), date: new Date(), editorial,
+  env: { locationState: 'granted', overnight: { on: false }, game: { i: 0, score: 0, answered: null, best: 0 } },
+})
+
+// -------------------------------------------------------------- drawing
+// Cell for cell as src/term.js rasterises: an 8x16 glyph in a 9-dot advance,
+// bitmaps (mosaics) carried across the gap, colours from the palette.
+function drawPage(canvas, page, { reveal = false, mono = false } = {}) {
+  const W = 40 * 9 + 12, H = 25 * 16 + 10
+  canvas.width = W; canvas.height = H
+  const g = canvas.getContext('2d')
+  const img = g.createImageData(W, H)
+  const pal = mono ? T.MONO_PALETTE : T.PALETTE
+  const put = (x, y, c) => { const i = (y * W + x) * 4; img.data[i] = c[0]; img.data[i + 1] = c[1]; img.data[i + 2] = c[2]; img.data[i + 3] = 255 }
+  for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255
+  for (let r = 0; r < 25; r++) for (let c = 0; c < 40; c++) {
+    const cell = page.cells[r][c]
+    const hidden = cell.con && !reveal
+    let bm = null, join = false
+    if (!hidden) {
+      if (cell.mos >= 0) { bm = T.mosaicBitmap(cell.mos, cell.sep); join = true }
+      else {
+        const gl = font.glyphs.get(cell.ch.codePointAt(0)) || font.glyphs.get(63)
+        bm = cell.dh ? T.doubleBitmap(gl, cell.dh === 1 ? 'top' : 'bottom') : gl
+      }
+    }
+    const ox = 6 + c * 9, oy = 5 + r * 16
+    const fg = pal[cell.fg], bg = pal[cell.bg]
+    for (let y = 0; y < 16; y++) {
+      const row = bm ? bm[y] ?? 0 : 0
+      let bits = row << 1
+      if (join && (row & 1)) bits |= 1
+      for (let x = 0; x < 9; x++) put(ox + x, oy + y, (bits >>> (8 - x)) & 1 ? fg : bg)
+    }
+  }
+  g.putImageData(img, 0, 0)
+}
+
+// -------------------------------------------------------------- pages tab
+let current = '100', sub = 0
+const feedDots = (def) => h('span', { class: 'dots' }, (def?.feeds || []).map(id => h('span', { class: `dot ${feeds.status(id)}`, title: `${id}: ${feeds.status(id)}` })))
+
+function renderPageList() {
+  const box = $('pagelist')
+  box.replaceChildren(h('h2', {}, 'Pages'))
+  const c = ctx()
+  const nums = [...new Set([...Pages.pageOrder(c), ...[...Pages.PAGES.values()].filter(d => d.hidden).map(d => d.num)])]
+  let mag = null
+  for (const num of nums) {
+    if (num[0] !== mag) {
+      mag = num[0]
+      const m = Pages.MAGAZINES[mag]
+      box.append(h('div', { class: 'mag' }, `${mag}xx ${m.name}`))
+    }
+    const def = Pages.pageDef(num, c)
+    box.append(h('button', { 'aria-current': String(num === current), onclick: () => { current = num; sub = 0; renderPageList(); renderPreview() } },
+      h('span', { class: 'num' }, num), h('span', {}, def.title + (def.hidden ? ' (hidden)' : '')), feedDots(def)))
+  }
+}
+
+function renderPreview() {
+  const c = ctx()
+  const def = Pages.pageDef(current, c)
+  $('pv-title').textContent = def ? `${current}  ${def.title}` : current
+  let subs = null
+  try { subs = def?.render(c) } catch (e) { $('pv-status').innerHTML = `<span class="bad">render threw: ${e.message}</span>`; return }
+  if (!subs) {
+    const g = $('pv').getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, 999, 999)
+    $('pv-status').textContent = `Not on air yet: waiting for ${(def?.feeds || []).join(', ')}. The set would still be searching.`
+    $('pv-text').textContent = ''
+    $('pv-sub').textContent = '-'
+    return
+  }
+  sub = Math.min(sub, subs.length - 1)
+  const p = subs[sub]
+  const reveal = $('pv-reveal').checked
+  drawPage($('pv'), p, { reveal, mono: $('pv-mono').checked })
+  $('pv-sub').textContent = `${sub + 1}/${subs.length}`
+  const issues = p.issues.length ? `<span class="bad">${p.issues.join('; ')}</span>` : ''
+  const src = (def.feeds || []).map(id => `${id} ${feeds.status(id)}`).join(', ')
+  $('pv-status').innerHTML = [src && `sources: ${src}`, issues].filter(Boolean).join('<br>')
+  $('pv-text').textContent = p.lines({ reveal }).map((l, i) => String(i).padStart(2) + '|' + l).join('\n')
+}
+$('pv-prev').onclick = () => { sub = Math.max(0, sub - 1); renderPreview() }
+$('pv-next').onclick = () => { sub++; renderPreview() }
+$('pv-reveal').onchange = renderPreview
+$('pv-mono').onchange = renderPreview
+$('pv-open').onclick = () => { $('set').src = `/?page=${current}&power=on&t=${Date.now()}` }
+$('set').src = '/?page=100&power=on'
+renderPageList()
+renderPreview()
+
+// -------------------------------------------------------------- editorial tab
+let notice = 0
+const markDirty = () => { dirty = true; $('ed-state').innerHTML = '<span class="warn">unsaved changes</span>'; scheduleCheck() }
+let checkTimer = null
+const scheduleCheck = () => { clearTimeout(checkTimer); checkTimer = setTimeout(check, 500) }
+
+function showIssues(r) {
+  const ul = $('ed-issues')
+  ul.replaceChildren(...r.errors.map(e => h('li', { class: 'err' }, e)), ...r.warnings.map(w => h('li', { class: 'warn' }, w)))
+  $('ed-save').disabled = r.errors.length > 0
+  return r
+}
+async function check() {
+  const r = await api('editorial/check', { editorial })
+  if (r.ok) showIssues(r.json)
+}
+
+function renderNotices() {
+  const pick = $('nt-pick')
+  pick.replaceChildren(...editorial.notices.map((n, i) => h('option', { value: i, selected: i === notice }, `${n.page} ${n.title}`)))
+  const n = editorial.notices[notice]
+  $('nt-page').value = n?.page ?? ''
+  $('nt-title').value = n?.title ?? ''
+  $('nt-lines').value = (n?.lines ?? []).join('\n')
+  renderNoticePreview()
+}
+async function renderNoticePreview() {
+  const n = editorial.notices[notice]
+  if (!n) return
+  const { lineWidth } = await import(`/markup.js?v=${V}`)
+  const def = Pages.pageDef(n.page, ctx())
+  if (def) drawPage($('nt-pv'), def.render(ctx())[0], { reveal: true })
+  const wide = n.lines.map((l, i) => [i + 1, lineWidth(l)]).filter(([, w]) => w > 39)
+  $('nt-widths').innerHTML = wide.length ? `<span class="bad">too wide: ${wide.map(([i, w]) => `line ${i} (${w})`).join(', ')}</span>` : `${n.lines.length} lines, all fit`
+}
+$('nt-pick').onchange = (e) => { notice = +e.target.value; renderNotices() }
+$('nt-page').oninput = (e) => { editorial.notices[notice].page = e.target.value.toUpperCase(); markDirty(); renderNoticePreview() }
+$('nt-title').oninput = (e) => { editorial.notices[notice].title = e.target.value; markDirty(); renderNoticePreview() }
+$('nt-lines').oninput = (e) => { editorial.notices[notice].lines = e.target.value.split('\n'); markDirty(); renderNoticePreview() }
+$('nt-add').onclick = () => {
+  const used = new Set(editorial.notices.map(n => n.page))
+  let n = 0x191
+  while (used.has(n.toString(16).toUpperCase()) || Pages.PAGES.has(n.toString(16).toUpperCase())) n++
+  editorial.notices.push({ page: n.toString(16).toUpperCase(), title: 'NEW NOTICE', lines: ['[y]Write the notice here.'] })
+  notice = editorial.notices.length - 1
+  markDirty(); renderNotices()
+}
+$('nt-del').onclick = () => {
+  if (editorial.notices.length < 2) return
+  editorial.notices.splice(notice, 1); notice = 0; markDirty(); renderNotices()
+}
+
+function renderQuiz() {
+  $('qz').replaceChildren(...editorial.quiz.map((q, i) => h('div', { class: 'qrow' },
+    h('span', { class: 'muted' }, String(i + 1)),
+    h('input', { type: 'text', value: q.q, placeholder: 'question', oninput: (e) => { q.q = e.target.value; markDirty() } }),
+    h('input', { type: 'text', value: q.a, placeholder: 'answer', maxlength: 40, oninput: (e) => { q.a = e.target.value; markDirty() } }),
+    h('button', { class: 'act', title: 'remove', onclick: () => { editorial.quiz.splice(i, 1); markDirty(); renderQuiz() } }, 'x'))))
+}
+$('qz-add').onclick = () => { editorial.quiz.push({ q: '', a: '' }); markDirty(); renderQuiz() }
+
+const KEYCOL = ['var(--red)', 'var(--green)', 'var(--yellow)', 'var(--cyan)']
+function renderFourKeys() {
+  $('fk').replaceChildren(...editorial.fourkeys.map((q, i) => h('div', { class: 'fkrow' },
+    h('div', { class: 'row', style: 'margin:0' },
+      h('span', { class: 'muted' }, String(i + 1)),
+      h('input', { type: 'text', value: q.q, style: 'flex:1', oninput: (e) => { q.q = e.target.value; markDirty() } }),
+      h('button', { class: 'act', onclick: () => { editorial.fourkeys.splice(i, 1); markDirty(); renderFourKeys() } }, 'x')),
+    h('div', { class: 'fkopts' }, q.options.map((o, k) => h('label', {},
+      h('input', { type: 'radio', name: `fk${i}`, checked: q.answer === k, title: 'the right answer', onchange: () => { q.answer = k; markDirty() } }),
+      h('input', { type: 'text', value: o, style: `border-left:4px solid ${KEYCOL[k]}`, oninput: (e) => { q.options[k] = e.target.value; markDirty() } })))))))
+}
+$('fk-add').onclick = () => { editorial.fourkeys.push({ q: '', options: ['', '', '', ''], answer: 0 }); markDirty(); renderFourKeys() }
+
+function renderOvernight() {
+  const o = editorial.overnight
+  const roster = feeds.get('signal')?.data?.stations || []
+  const sel = $('on-station')
+  const opts = roster.length ? roster : [{ id: o.stationId, callsign: o.stationId, freq: NaN }]
+  sel.replaceChildren(...opts.map(s => h('option', { value: s.id, selected: s.id === o.stationId }, `${Number.isFinite(s.freq) ? s.freq.toFixed(1) + ' ' : ''}${s.callsign}`)))
+  $('on-start').value = o.startHour; $('on-end').value = o.endHour; $('on-idle').value = o.idleMinutes
+}
+$('on-station').onchange = (e) => { editorial.overnight.stationId = e.target.value; markDirty() }
+$('on-start').oninput = (e) => { editorial.overnight.startHour = +e.target.value; markDirty() }
+$('on-end').oninput = (e) => { editorial.overnight.endHour = +e.target.value; markDirty() }
+$('on-idle').oninput = (e) => { editorial.overnight.idleMinutes = +e.target.value; markDirty() }
+feeds.ensure('signal').then(renderOvernight)
+
+$('ed-check').onclick = check
+$('ed-save').onclick = async () => {
+  const r = await api('editorial', { editorial })
+  showIssues(r.json)
+  if (r.json.saved) { dirty = false; $('ed-state').innerHTML = '<span class="ok">saved</span>'; refreshGit() }
+  else if (r.json.unchanged) { dirty = false; $('ed-state').textContent = 'no change to save' }
+  else $('ed-state').innerHTML = '<span class="bad">not saved: fix the errors first</span>'
+}
+addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = '' } })
+renderNotices(); renderQuiz(); renderFourKeys(); renderOvernight(); showIssues(state.lint)
+
+// -------------------------------------------------------------- sources tab
+const ago = (iso) => {
+  if (!iso) return 'never'
+  const m = Math.round((Date.now() - Date.parse(iso)) / 60000)
+  return m < 60 ? `${m}m ago` : m < 2880 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`
+}
+function renderSources() {
+  const hl = state.health || { feeds: {} }
+  const w = hl.watch
+  $('src-banner').replaceChildren(...[
+    w && w.late ? h('div', { class: 'banner late' }, w.lastRun ? `The scheduled feed watch is LATE: last ran ${ago(w.lastRun.at)}. Is the timer enabled?` : 'The scheduled feed watch has never run on this machine.') : null,
+    Object.values(hl.feeds).some(f => !f.ok && f.strikes >= 2) ? h('div', { class: 'banner fail' }, 'At least one source has failed twice in a row.') : null,
+  ].filter(Boolean))
+  $('src-watch').textContent = w?.lastRun ? `watch last ran ${ago(w.lastRun.at)}: ${w.lastRun.outcome}` : ''
+  $('src-rows').replaceChildren(...Object.entries(FEEDS).map(([id, f]) => {
+    const r = hl.feeds[id]
+    const b = feeds.status(id), be = feeds.get(id)
+    return h('tr', {},
+      h('td', {}, h('b', {}, id), h('div', { class: 'muted' }, f.title)),
+      h('td', {}, r ? h('span', { class: r.ok ? 'ok' : 'bad' }, r.ok ? 'ok' : 'FAIL') : h('span', { class: 'muted' }, 'never probed'), r ? ` ${ago(r.checkedAt)}` : ''),
+      h('td', { class: r?.strikes ? 'bad' : 'muted' }, String(r?.strikes ?? '-')),
+      h('td', {}, h('span', { class: `dot ${b}`, style: 'display:inline-block;margin-right:6px' }), b, be?.error ? h('div', { class: 'bad' }, be.error) : null),
+      h('td', { class: 'muted' }, r ? (r.ok ? r.detail : r.error) : ''))
+  }))
+}
+$('src-browser').onclick = () => { for (const id of Object.keys(FEEDS)) feeds.ensure(id, { force: true }) }
+$('src-probe').onclick = async () => {
+  await stream('run', { task: 'health' })
+  const r = await api('health'); if (r.ok) { state.health = r.json; renderSources() }
+}
+
+// -------------------------------------------------------------- ship tab
+async function refreshGit() {
+  const r = await api('git'); if (r.ok) { state.git = r.json; renderHeader(); renderShip() }
+}
+function renderShip() {
+  const g = state.git
+  $('sh-branch').textContent = g.branch
+  $('sh-last').textContent = g.lastCommit
+  $('sh-up').innerHTML = g.upstream ? `${g.upstream}${g.ahead ? ` <span class="warn">(${g.ahead} ahead)</span>` : ''}` : '<span class="warn">none: SHIP will commit locally and not push</span>'
+  $('sh-dirty').replaceChildren(...(g.dirty.length ? g.dirty.map(d => h('div', {}, h('span', { class: 'muted' }, d.code.padEnd(3)), d.file)) : [h('span', { class: 'ok' }, 'nothing')]))
+}
+const log = (text, cls = '') => { const el = $('log'); el.append(h('div', { class: cls }, text)); el.scrollTop = el.scrollHeight }
+async function stream(route, body) {
+  document.querySelector('[data-tab="ship"]').click()
+  $('log').replaceChildren()
+  const res = await fetch(`/api/${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Interval-Admin': '1' }, body: JSON.stringify(body) })
+  if (!res.ok) { log((await res.json()).error, 'err'); return 1 }
+  const reader = res.body.getReader()
+  const dec = new TextDecoder()
+  let buf = '', code = 1
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buf += dec.decode(value, { stream: true })
+    const lines = buf.split('\n'); buf = lines.pop()
+    for (const line of lines) {
+      if (!line) continue
+      const ev = JSON.parse(line)
+      if (ev.type === 'cmd') log(ev.text, 'cmd')
+      else if (ev.type === 'step') log(`-- ${ev.label}`, 'step')
+      else if (ev.type === 'step-done') log(ev.code ? `-- failed (${ev.code})` : '-- ok', ev.code ? 'err' : 'done')
+      else if (ev.type === 'exit') { code = ev.code; log(ev.code ? `FAILED${ev.failed ? ` at ${ev.failed}` : ''}` : 'done', ev.code ? 'err' : 'done') }
+      else if (ev.type === 'git') { state.git = ev.state; renderHeader(); renderShip() }
+      else if (ev.text != null) log(ev.text, ev.type === 'err' ? 'err' : '')
+    }
+  }
+  refreshGit()
+  return code
+}
+document.querySelectorAll('[data-task]').forEach(b => b.onclick = () => stream('run', { task: b.dataset.task }))
+$('sh-preflight').onclick = () => stream('preflight', { includeNetwork: $('sh-net').checked })
+const shipReady = () => { $('sh-ship').disabled = !($('sh-confirm').checked && $('sh-msg').value.trim()) }
+$('sh-confirm').onchange = shipReady
+$('sh-msg').oninput = shipReady
+$('sh-ship').onclick = async () => {
+  if (dirty) { log('Editorial has unsaved changes. Save or reload before shipping.', 'err'); return }
+  await stream('ship', { message: $('sh-msg').value, confirm: true, includeNetwork: $('sh-net').checked })
+  $('sh-confirm').checked = false; shipReady()
+}
+renderShip()
+ready = true
+renderPageList()
+renderPreview()
+</script>
+</body>
+</html>
