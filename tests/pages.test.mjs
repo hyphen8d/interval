@@ -242,12 +242,17 @@ test('sport: a page a league, live games first, starts in the viewer\'s time', a
   assert.match(gameStatus({ state: 'pre', date: new Date(2026, 9, 3, 19, 0).getTime() }).text, /^SAT 7:00PM$/)
 })
 
-test('coming up and the ISS draw from their sources', () => {
+test('coming up draws from its sources, and a gallery draws only its current picture live', () => {
   const ctx = ctxWith()
   const c = pageDef('203', ctx).render(ctx)[0].lines().join('\n')
   assert.match(c, /Columbus Day \/ Indigenous Peoples' Day/)
   assert.match(c, /Crew-13/)
-  const iss = pageDef('204', ctx).render(ctx)[0].lines().join('\n')
-  assert.match(iss, /OVER 21\.4N 109\.7W/)
-  assert.match(iss, /MPH, 260 MILES UP/)
+  assert.equal(pageDef('204', ctx), null, 'the ISS page is gone')
+  const g = pageDef('700', ctx)
+  const at = (now, sub) => g.render({ ...ctx, now, env: { ...ctx.env, sub } }).map(p => JSON.stringify(p.cells))
+  const [a, b] = [at(1000, 5), at(3500, 5)]
+  assert.equal(a.length, 8)
+  assert.match(g.render({ ...ctx, env: { ...ctx.env, sub: 4 } })[4].lines().join('\n'), /AQUARIUM/)
+  assert.notEqual(a[5], b[5], 'the picture on screen moves')
+  assert.equal(a[6], b[6], 'the others hold still')
 })

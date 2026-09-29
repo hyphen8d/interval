@@ -219,7 +219,7 @@ test('H while cycling holds the section; H again moves on', async () => {
   assert.ok(h.program.cycle.holdSection)
   const seen = new Set()
   for (let i = 0; i < 40; i++) { await h.settle(5000, 500); seen.add(h.program.page) }
-  assert.deepEqual([...seen].sort(), ['200', '201', '202', '203', '204'], 'round TODAY and nowhere else')
+  assert.deepEqual([...seen].sort(), ['200', '201', '202', '203'], 'round TODAY and nowhere else')
   assert.match(h.row(24), /HOLDING\s+TODAY\s+H MOVES ON/)
   h.key('h')
   for (let i = 0; i < 20 && Pages.sectionOf(h.program.page) === 1; i++) await h.settle(5000, 500)
@@ -297,15 +297,23 @@ test('switching off returns to standby and a deploy is picked up at the switch',
 })
 
 
-test('switching on: a bright line, the ident with its chime, then the welcome', async () => {
-  const { BOOT_LINE_MS, BOOT_MS } = await import('../program.js')
+test('switching on: a bright line, the decoder reporting in, the ident, then the welcome', async () => {
+  const { BOOT_LINE_MS, BOOT_IDENT_AT, BOOT_POST_LINE_MS, BOOT_MS, bootLines } = await import('../program.js')
   const h = await boot({ power: false })
   h.key('p')
   h.advance(200)
   assert.ok(h.term.colors.some(c => (c >> 4) === 7), 'a white line across the tube')
   assert.equal(h.row(0), '', 'no header while the set is warming up')
-  h.advance(BOOT_LINE_MS + 900)
-  assert.ok(h.find('THE PAGES BETWEEN PICTURES'))
+  h.advance(BOOT_LINE_MS + BOOT_POST_LINE_MS)
+  assert.ok(h.find('TELETEXT DECODER'))
+  assert.ok(h.find('SYNC') && !h.find('PAGE STORE'), 'the readout lands a line at a time')
+  h.advance(bootLines().length * BOOT_POST_LINE_MS)
+  assert.ok(h.find('PAGE 190 REQUESTED'))
+  assert.match(h.text(), /PAGE STORE\s+:\s+\d+ PAGES, 7 SECTIONS/)
+  assert.ok(h.program.feeds.entries.size > 0, 'the sources are asked for while it boots')
+  const elapsed = 200 + BOOT_LINE_MS + BOOT_POST_LINE_MS + bootLines().length * BOOT_POST_LINE_MS
+  h.advance(BOOT_IDENT_AT + 900 - elapsed)
+  assert.ok(h.find('THE PAGES BETWEEN PICTURES'), h.text())
   assert.ok(h.term.gfx.some(Boolean), 'the logo in block graphics')
   await h.settle(BOOT_MS + 1500)
   assert.equal(h.program.page, '190')
@@ -333,6 +341,10 @@ test('pages that move: the clock ticks, the candle flickers, the fish swim, the 
   const differs = (f, a, b) => f(a).join('') !== f(b).join('')
   assert.ok(differs(Pic.candlePixels, 0, 500))
   assert.ok(differs(Pic.aquariumPixels, 0, 3000))
+  assert.ok(differs(Pic.lighthousePixels, 0, 2500))
+  assert.ok(differs(Pic.auroraPixels, 0, 3000))
+  assert.ok(differs(Pic.trainPixels, 10000, 11000))
+  assert.ok(differs(Pic.launchPixels, 0, 1000))
   assert.ok(differs(Pic.moonrisePixels, 0, 20000))
   assert.ok(differs(Pic.seaPixels, 0, 2000))
   assert.notEqual(Pic.weatherCell('rain', 0), Pic.weatherCell('rain', 250))
@@ -369,7 +381,7 @@ test('the arrival tick only for a page keyed, and the chime only at switch-on', 
 
 test('focus: red starts and pauses, the timer runs on other pages, and chimes when done', async () => {
   const h = await boot()
-  await h.go('503', 2000)
+  await h.go('502', 2000)
   h.key('F1')
   assert.equal(h.program.focus.state, 'run')
   await h.go('101', 2000)
@@ -377,7 +389,7 @@ test('focus: red starts and pauses, the timer runs on other pages, and chimes wh
   assert.equal(h.program.focus.state, 'done')
   assert.match(h.row(0), /TIME'S UP|INTERVAL/)
   assert.ok(h.announced.some(s => /Time's up/.test(s)))
-  await h.go('503', 2000)
+  await h.go('502', 2000)
   h.key('F3')
   assert.equal(h.program.focus.mode, 'break')
   h.key('F1'); h.advance(10000); h.key('F1')
@@ -388,7 +400,7 @@ test('focus: red starts and pauses, the timer runs on other pages, and chimes wh
 
 test('decide: the die tumbles, then lands on 1-20; the coin lands on heads or tails', async () => {
   const h = await boot()
-  await h.go('504', 2000)
+  await h.go('503', 2000)
   h.key('F1')
   const v = h.program.decide.value
   assert.ok(v >= 1 && v <= 20)
@@ -402,8 +414,8 @@ test('decide: the die tumbles, then lands on 1-20; the coin lands on heads or ta
 test('cycling skips the timer, the dice, and a league with no games', async () => {
   const h = await boot()
   const pause = h.program.cyclePages(5)
-  assert.ok(!pause.includes('503') && !pause.includes('504'))
-  assert.ok(pause.includes('502'))
+  assert.ok(!pause.includes('502') && !pause.includes('503'))
+  assert.ok(pause.includes('501'))
   h.program.feeds.entries.get('sport_nba').data = { games: [] }
   h.program.feeds.entries.get('sport_nba').key = 'live'
   assert.ok(!h.program.cyclePages(4).includes('602'))

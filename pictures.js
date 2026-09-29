@@ -234,59 +234,140 @@ export function weatherKind(code) {
   return null
 }
 
-// ---------------------------------------------------------------------------
-// The world, for the ISS page: land by 5-degree cell, drawn from memory of
-// an equirectangular map. It is a map for a dot to move across, not an
-// atlas: continents are where they are, coastlines are approximate.
-// ---------------------------------------------------------------------------
-
-/** Rows of 5 degrees from 90N; each row lists [from, to] columns of land,
- *  where column c is longitude -180 + 5c. */
-const LAND = [
-  [], [[22, 32]], [[21, 33], [44, 50], [58, 64]], [[8, 16], [21, 32], [42, 70]],
-  [[2, 16], [20, 23], [25, 31], [37, 42], [42, 71]], [[2, 17], [20, 30], [36, 42], [43, 68]],
-  [[1, 16], [20, 26], [26, 28], [34, 35], [37, 42], [44, 67]], [[8, 18], [20, 25], [34, 35], [36, 66]],
-  [[11, 23], [35, 64]], [[11, 22], [35, 45], [46, 63]], [[11, 22], [34, 44], [46, 62], [64, 65]],
-  [[12, 21], [33, 44], [45, 50], [51, 61], [64, 64]], [[12, 20], [33, 48], [49, 54], [55, 60]],
-  [[13, 18], [33, 48], [50, 53], [55, 58]], [[16, 19], [33, 47], [50, 53], [55, 58]],
-  [[18, 20], [33, 46], [51, 52], [56, 57]], [[20, 26], [34, 46], [57, 58]],
-  [[20, 28], [38, 45], [55, 60], [62, 64]], [[20, 29], [38, 44], [55, 57], [59, 64]],
-  [[20, 29], [38, 44], [61, 64]], [[21, 29], [38, 44], [62, 63]], [[22, 28], [39, 43], [45, 45], [59, 66]],
-  [[22, 27], [39, 43], [45, 46], [58, 66]], [[22, 26], [39, 42], [45, 45], [58, 66]],
-  [[22, 25], [39, 42], [58, 65]], [[22, 24], [40, 41], [60, 65], [70, 70]], [[22, 24], [64, 65], [70, 70]],
-  // Antarctica as a thin shelf: the first cut filled 70-90S solid, which
-  // read as a green floor under the map, and the station never goes past 52S.
-  [[22, 23]], [[22, 23]], [], [], [], [], [], [], [[0, 71]],
-]
-export function isLand(lat, lon) {
-  const r = Math.floor((90 - lat) / 5), c = Math.floor((((lon + 180) % 360) + 360) % 360 / 5)
-  return (LAND[r] || []).some(([a, b]) => c >= a && c <= b)
-}
-
-/** 80x45 pixels of the world with the station on it: green land, the dot
- *  in yellow, blinking, with a white cross-hair so it is found at a glance. */
-export function issPixels(lat, lon, ms) {
-  const W = 80, H = 45
-  const sx = Math.round((lon + 180) / 360 * W), sy = Math.round((90 - lat) / 180 * H)
-  const on = Math.floor(ms / 500) % 2 === 0
-  return pixels(W, H, (x, y) => {
-    if (Math.abs(x - sx) <= 1 && Math.abs(y - sy) <= 1) return on ? 'Y' : 'W'
-    if ((x === sx && Math.abs(y - sy) <= 3) || (y === sy && Math.abs(x - sx) <= 4)) return 'W'
-    return isLand(90 - (y + 0.5) * 180 / H, -180 + (x + 0.5) * 360 / W) ? 'G' : null
+/** A lighthouse on a headland at night (2026-09-28). The lamp turns once
+ *  every ten seconds: the beam swings across the sky, foreshortens as it
+ *  comes round towards you, flares when it points straight out of the
+ *  screen, and goes behind the tower on the far side. The tower's bands are
+ *  a whole cell row each -- a band edge inside a cell would put red and
+ *  white in one cell, and a cell holds one colour. Sea below row 12. */
+export const LIGHTHOUSE_HZ = 36
+export function lighthousePixels(ms) {
+  const HZ = LIGHTHOUSE_HZ, lx = 58, ly = 7
+  const a = (ms % 10000) / 10000 * Math.PI * 2
+  const c = Math.cos(a), toward = Math.sin(a) > 0
+  const reach = 74 * Math.abs(c)
+  return pixels(80, 57, (x, y) => {
+    const ground = x < 40 ? 99 : 28 + Math.round(((x - lx) / 17) ** 2 * 10)
+    if (y >= ground) return 'G'
+    // The roof, the lantern, then the tower, widening a little to its foot.
+    if (y >= 3 && y <= 5 && Math.abs(x - lx) <= y - 3) return 'R'
+    if (y >= 6 && y <= 8 && Math.abs(x - lx) <= 2) return 'Y'
+    if (y >= 9 && y < ground && Math.abs(x - lx) <= 2 + (y - 9) / 12) return Math.floor(y / 3) % 2 ? 'W' : 'R'
+    // Straight at you: a glare round the lantern.
+    if (toward && Math.abs(c) < 0.18 && y < HZ && (x - lx) ** 2 + ((y - ly) * 1.5) ** 2 < 26) return 'Y'
+    // The beam: a wedge from the lamp, dotted while it points away.
+    const dx = x - lx
+    if (y < HZ && dx * c > 0 && Math.abs(dx) <= reach) {
+      const half = 0.6 + Math.abs(dx) * 0.07
+      if (Math.abs(y - ly) <= half && (toward || (x + y) % 2 === 0)) return 'Y'
+    }
+    // Waves: short dashes at scattered places along each line, drifting.
+    if (y >= HZ) return y % 3 === 1 && hash2(Math.floor((x + Math.floor(ms / 400) * (y % 2 ? 1 : -1)) / 4), y) > 0.7 ? 'C' : null
+    return hash2(x, y + 7) > 0.99 && hash3(x, y, Math.floor(ms / 1100)) > 0.2 ? 'W' : null
   })
 }
 
-/** A rocket on its pad, 12x24 pixels, for the launch countdown: a white
- *  body, red fins and nose, and, in the last minute, a flame. */
-export function rocketPixels(ms, lit = false) {
-  return pixels(12, 24, (x, y) => {
-    const cx = 5.5
-    if (y < 4) return Math.abs(x - cx) < (y + 1) * 0.55 ? 'R' : null
-    if (y < 17) return Math.abs(x - cx) < 2.3 ? (y === 8 && Math.abs(x - cx) < 1 ? 'C' : 'W') : null
-    if (y < 20) return Math.abs(x - cx) < 2.3 ? 'W' : Math.abs(x - cx) < 4.5 && y > 17 ? 'R' : null
-    if (!lit) return y === 23 ? 'W' : null
-    const f = Math.floor(ms / 90)
-    return Math.abs(x - cx) < 2.5 - (y - 20) * 0.4 + (hash3(x, y, f) - 0.5) ? 'Y' : null
+/** The northern lights over snow and pines (2026-09-28): curtains that
+ *  drift and fold, rayed from top to bottom, brightest along their lower
+ *  edge, with a magenta fringe above -- which is what the aurora does. */
+export function auroraPixels(ms) {
+  const t = ms / 1000
+  const TREES = [[6, 10], [12, 13], [19, 9], [54, 11], [60, 14], [67, 10], [74, 12]]
+  return pixels(80, 57, (x, y) => {
+    const g = Math.round(45 + 3 * Math.sin(x / 9) + 2 * Math.sin(x / 4.3 + 1))
+    for (const [tx, h] of TREES) {
+      const tip = Math.round(45 + 3 * Math.sin(tx / 9) + 2 * Math.sin(tx / 4.3 + 1)) - h
+      if (y >= tip && y <= tip + h + 1 && Math.abs(x - tx) <= (y - tip) / 3) return 'G'
+    }
+    if (y >= g) return 'W'
+    const mid = 16 + 5 * Math.sin(x / 11 + t * 0.2) + 3 * Math.sin(x / 5.3 - t * 0.33)
+    const top = mid - 9 - 4 * Math.sin(x / 7 + t * 0.25), bottom = mid + 6
+    if (y >= top && y <= bottom) {
+      const k = (y - top) / (bottom - top)
+      const rays = 0.55 + 0.45 * Math.sin(x * 1.3 + t * 0.9 + Math.sin(x / 3 + t * 0.4) * 2)
+      // A fixed dither, not a per-frame one: the curtain drifts through it
+      // and so moves smoothly, where fresh noise every frame read as static.
+      if (k > 0.8 || Math.pow(k, 1.6) * rays * 1.3 > hash2(x, y + 11)) return k < 0.3 && rays > 0.6 ? 'M' : 'G'
+    }
+    return hash2(x, y + 31) > 0.988 ? 'W' : null
+  })
+}
+
+/** A night train crossing a valley (2026-09-28): hills under a moon, and
+ *  every forty seconds a train runs across on the track, its windows lit,
+ *  its headlight ahead of it and its reflection shivering in the river.
+ *  Nothing else moves, so the train is an event: the picture is mostly
+ *  waiting for it. Rows 13 down are blue (the gallery's bgFor).
+ *
+ *  The body is black, and it is the cells' BACKGROUND, not pixels
+ *  (`trainSpan` tells the page's bgFor where it is): a cell holds one ink
+ *  and one paper, so yellow windows in a black body on a blue valley is
+ *  three colours unless the body is the paper. The first cut had no body,
+ *  and the windows read as a dashed line across the screen. */
+export const TRAIN_WATER = 39
+export const TRAIN_ROOF = 36
+const TRAIN_CARS = 4, TRAIN_CAR = 13, TRAIN_LEN = TRAIN_CARS * TRAIN_CAR + 10
+export function trainSpan(ms) {
+  const tail = Math.round(-TRAIN_LEN + ((ms % 40000) / 40000) * (80 + TRAIN_LEN + 60))
+  return [tail, tail + TRAIN_LEN - 1]
+}
+export function trainPixels(ms) {
+  const CARS = TRAIN_CARS, CAR = TRAIN_CAR, LEN = TRAIN_LEN
+  const [tail, head] = trainSpan(ms)
+  const lit = (x) => {
+    const u = x - tail
+    if (u < 0 || u >= LEN) return false
+    if (u >= CARS * CAR) return u === LEN - 3 || u === LEN - 4
+    // A window is one whole cell and so is the gap after it: a 2-on/1-off
+    // pattern smeared into a solid strip, since a cell is two pixels wide.
+    const w = u % CAR
+    return w >= 1 && w <= 11 && x % 4 < 2
+  }
+  return pixels(80, 57, (x, y) => {
+    if ((x - 14) ** 2 + ((y - 8) * 1.3) ** 2 < 20) return 'W'
+    const hill = Math.round(30 + 4 * Math.sin(x / 13) + 3 * Math.sin(x / 6 + 2))
+    // The body's two cell rows: the black paper shows, but for the windows.
+    const inTrain = x >= tail - 1 && x <= head + 1 && y >= TRAIN_ROOF && y <= 41
+    if (inTrain) return y >= 39 && y <= 40 && lit(x) ? 'Y' : null
+    if (y < TRAIN_WATER) {
+      if (y >= hill) return 'B'
+      return hash2(x, y + 53) > 0.988 ? 'W' : null
+    }
+    // Windows (39-40), the headlight throwing light ahead, the rails (42).
+    if (y <= 40 && lit(x)) return 'Y'
+    if (y === 40 && x > head && x <= head + 9 && (x - head) % 2 === 1) return 'W'
+    if (y === 42) return x % 4 === 0 ? 'W' : null
+    // The river: the windows again, upside down and broken up.
+    if ((y === 47 || y === 48) && lit(x) && hash3(x, y, Math.floor(ms / 250)) > 0.35) return 'Y'
+    if (y >= 46 && y % 3 === 1 && (x * 3 + y + Math.floor(ms / 600)) % 17 < 2) return 'C'
+    return null
+  })
+}
+
+/** The launch countdown's picture, 18x24 pixels: the curve of the Earth, a
+ *  pad, and the ascent drawn as a dotted arc that goes up and then leans
+ *  over (a gravity turn), with a craft climbing it every six seconds. In the
+ *  last minute the arc fills in yellow behind the craft. 2026-09-28: it was
+ *  a rocket standing on its pad -- a tall white tube, rounded red nose, two
+ *  fins at the base -- and it read as something else entirely. The path is
+ *  the thing a countdown is about, and nothing tall and upright is drawn. */
+export function launchPixels(ms, lit = false) {
+  const W = 18, H = 24
+  const at = (s) => [2 + 15 * s * s, 19 - 18 * s]
+  const k = (ms % 6000) / 6000
+  const [cx, cy] = at(k)
+  return pixels(W, H, (x, y) => {
+    // The Earth: a wide circle, so the ground curves away at both ends.
+    if ((x - 9) ** 2 * 1.9 + (y - 60) ** 2 < 39 ** 2) return 'G'
+    if (y === 21 && x >= 1 && x <= 4) return 'R'
+    if (Math.abs(x - cx) < 1.1 && Math.abs(y - cy) < 1.1) return 'W'
+    for (let i = 0; i <= 40; i++) {
+      const s = i / 40, [px, py] = at(s)
+      if (Math.round(px) !== x || Math.round(py) !== y) continue
+      if (lit && s < k) return 'Y'
+      return i % 3 === 0 ? 'C' : null
+    }
+    return null
   })
 }
 

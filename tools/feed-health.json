@@ -324,20 +324,6 @@
       "cors": true,
       "strikes": 0,
       "lastOk": "2026-09-29T03:25:42.482Z"
-    },
-    "iss": {
-      "id": "iss",
-      "title": "Where the ISS is, now",
-      "checkedAt": "2026-09-29T03:25:42.875Z",
-      "items": 1,
-      "detail": "-2.5, -91.7",
-      "ok": true,
-      "ms": 308,
-      "requests": 1,
-      "status": 200,
-      "cors": true,
-      "strikes": 0,
-      "lastOk": "2026-09-29T03:25:42.875Z"
     }
   }
 }

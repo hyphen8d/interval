@@ -171,15 +171,13 @@ test('a live game makes its scoreboard refresh every minute', async () => {
   assert.equal(loads, 3, 'over: back to fifteen minutes')
 })
 
-test('launches, holidays and the ISS', async () => {
-  const { parseLaunches, parseHolidays, parseIss } = await import('../feeds.js')
+test('launches and holidays', async () => {
+  const { parseLaunches, parseHolidays } = await import('../feeds.js')
   const l = parseLaunches(fx('launches.json')).launches
   assert.equal(l[1].mission, 'Crew-13')
   assert.ok(l.every((x, i) => !i || x.net >= l[i - 1].net))
   const h = parseHolidays(fx('holidays-us.json')).holidays
   assert.deepEqual(h[0].names, ['Columbus Day', "Indigenous Peoples' Day"], 'one Monday, two names')
-  const iss = parseIss(fx('iss.json'))
-  assert.ok(Math.abs(iss.lat) < 52 && iss.kmh > 27000 && iss.sunlit === false)
 })
 
 test('household money: inflation is a twelve-month change worked out from the index', async () => {

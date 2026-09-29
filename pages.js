@@ -17,7 +17,7 @@
 //   render   (ctx) -> Page[] -- one Page per subpage.
 //
 //   liveMs   re-draw the page this often while it is up, for a page that
-//            moves (breathe, the clock, the candle, the aquarium, the
+//            moves (breathe, the clock, the candle, the gallery, the
 //            gallery, weather that rains). The pictures are pictures.js.
 //   cycleMs  how long cycling (N) leaves the page up, where the default
 //            (its subpages' worth, 12-36s) is wrong for it.
@@ -76,11 +76,11 @@ export const MAGAZINES = {
  */
 export const SECTIONS = [
   { name: 'NEWS', pages: [['HEADLINES', '101'], ['FACTS', '102']] },
-  { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201'], ['CLOCK', '202'], ['COMING UP', '203'], ['ISS NOW', '204']] },
+  { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201'], ['CLOCK', '202'], ['COMING UP', '203']] },
   { name: 'WEATHER', pages: [['TODAY', '300'], ['5-DAY', '301'], ['US CITIES', '302']] },
   { name: 'MONEY', pages: [['MARKETS', '401'], ['YOUR MONEY', '402']] },
   { name: 'SPORT', pages: [['NFL', '601'], ['NBA', '602'], ['MLB', '603'], ['NHL', '604'], ['SOCCER', '605'], ['COLLEGE', '606']] },
-  { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501'], ['AQUARIUM', '502'], ['FOCUS', '503'], ['DECIDE', '504']] },
+  { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501'], ['FOCUS', '502'], ['DECIDE', '503']] },
   { name: 'GALLERY', pages: [['PICTURES', '700']] },
 ]
 export const sectionOf = (num) => SECTIONS.findIndex(s => s.pages.some(([, n]) => n === String(num).toUpperCase()))
@@ -736,8 +736,9 @@ export function weekendIn(nowMs) {
 
 /**
  * Coming up (2026-09-28): three countdowns that tick -- the weekend, the next
- * public holiday, the next rocket launch, with a rocket on its pad that
- * lights in the last minute. A page to hold on a Friday afternoon.
+ * public holiday, the next rocket launch, with its ascent drawn beside it
+ * (pictures.js launchPixels; the rocket-on-a-pad it replaced read as
+ * something else). A page to hold on a Friday afternoon.
  */
 page('203', 'Coming up', {
   feeds: ['holidays', 'launches'],
@@ -765,35 +766,10 @@ page('203', 'Coming up', {
       p.text(BODY_TOP + 13, 1, clip(next.vehicle, 30), CYAN)
       p.text(BODY_TOP + 14, 1, clip(`${next.provider}, ${next.where}`, 30), CYAN)
       if (next.status && next.status !== 'Go') p.text(BODY_TOP + 15, 1, `STATUS: ${next.status.toUpperCase()}`, MAGENTA)
-      p.art(BODY_TOP + 9, 33, Pic.rocketPixels(ctx.now, t < 60000), { R: RED, W: WHITE, C: CYAN, Y: YELLOW })
+      p.art(BODY_TOP + 9, 31, Pic.launchPixels(ctx.now, t < 60000), { G: GREEN, W: WHITE, C: CYAN, Y: YELLOW, R: RED })
     } else p.text(BODY_TOP + 10, 1, 'WAITING FOR THE SCHEDULE', CYAN)
-    p.fast([['CLOCK', '202'], ['ISS', '204'], ['NEWS', '101'], ['INDEX', '100']])
+    p.fast([['CLOCK', '202'], ['SPORT', '601'], ['NEWS', '101'], ['INDEX', '100']])
     return [p]
-  },
-})
-
-/**
- * Where the ISS is, right now (2026-09-28): the world in block graphics with
- * the station's dot on it, refreshed every ten seconds. At 27,600 km/h it
- * crosses the map in about 45 minutes, so the dot visibly moves.
- */
-page('204', 'The ISS, now', {
-  feeds: ['iss'],
-  liveMs: 1000,
-  cycleMs: 20000,
-  render(ctx) {
-    return gate(ctx, '204', 'ISS NOW', ['iss'], ({ iss }) => {
-      const p = new Page()
-      masthead(p, '204', 'ISS NOW', { right: 'LIVE' })
-      p.art(BODY_TOP - 1, 0, Pic.issPixels(iss.lat, iss.lon, ctx.now), { G: GREEN, Y: YELLOW, W: WHITE }, () => BLUE)
-      const ns = `${Math.abs(iss.lat).toFixed(1)}${iss.lat >= 0 ? 'N' : 'S'}`, ew = `${Math.abs(iss.lon).toFixed(1)}${iss.lon >= 0 ? 'E' : 'W'}`
-      p.text(19, 1, `OVER ${ns} ${ew}`, YELLOW)
-      p.text(19, 22, iss.sunlit ? 'IN SUNLIGHT' : "IN EARTH'S SHADOW", iss.sunlit ? YELLOW : CYAN)
-      p.text(20, 1, `${Math.round(iss.kmh * 0.621371).toLocaleString('en-US')} MPH, ${Math.round(iss.alt * 0.621371)} MILES UP`, WHITE)
-      creditLine(p, ctx, 'iss')
-      p.fast([['COMING', '203'], ['CLOCK', '202'], ['NEWS', '101'], ['INDEX', '100']])
-      return [p]
-    })
   },
 })
 
@@ -1027,20 +1003,6 @@ page('501', 'A thought', {
   },
 })
 
-page('502', 'Aquarium', {
-  liveMs: 120,
-  cycleMs: 24000,
-  render(ctx) {
-    const p = new Page()
-    masthead(p, '502', 'AQUARIUM', { right: 'PAUSE' })
-    for (let r = 4; r <= 20; r++) p.band(r, BLUE)
-    p.art(4, 0, Pic.aquariumPixels(ctx.now), { Y: YELLOW, M: MAGENTA, R: RED, W: WHITE, G: GREEN, C: CYAN }, () => BLUE)
-    p.text(22, 1, 'NOTHING TO READ HERE. WATCH THE FISH.', GREEN)
-    p.fast([['BREATHE', '500'], ['THOUGHT', '501'], ['GALLERY', '700'], ['INDEX', '100']])
-    return [p]
-  },
-})
-
 /**
  * Focus (2026-09-28): a work timer -- twenty-five minutes, or a five-minute
  * break -- in big digits, started and stopped with the coloured keys. The
@@ -1048,12 +1010,14 @@ page('502', 'Aquarium', {
  * and the chime comes wherever you are. The page to hold while working.
  */
 export const FOCUS_MS = 25 * 60000, BREAK_MS = 5 * 60000
-page('503', 'Focus timer', {
+page('502', 'Focus timer', {
+  // A page you use, not one to watch: cycling passes it by.
+  noCycle: true,
   liveMs: 250,
   render(ctx) {
     const f = ctx.env.focus || { state: 'idle', mode: 'work', left: FOCUS_MS }
     const p = new Page()
-    masthead(p, '503', 'FOCUS', { right: f.mode === 'break' ? 'BREAK' : 'WORK' })
+    masthead(p, '502', 'FOCUS', { right: f.mode === 'break' ? 'BREAK' : 'WORK' })
     const left = f.state === 'run' ? Math.max(0, f.endsAt - ctx.now) : f.left
     const whole = f.mode === 'break' ? BREAK_MS : FOCUS_MS
     const secs = Math.ceil(left / 1000)
@@ -1077,12 +1041,13 @@ page('503', 'Focus timer', {
  * The result tumbles for most of a second before it lands.
  */
 export const ROLL_MS = 900
-page('504', 'Decide for me', {
+page('503', 'Decide for me', {
+  noCycle: true,
   liveMs: 70,
   render(ctx) {
     const d = ctx.env.decide
     const p = new Page()
-    masthead(p, '504', 'DECIDE', { right: 'FOR ME' })
+    masthead(p, '503', 'DECIDE', { right: 'FOR ME' })
     const tumbling = d && ctx.now - d.at < ROLL_MS
     if (!d) {
       p.wrap(BODY_TOP + 3, 1, 'Can not choose? Red rolls a twenty-sided die. Green flips a coin.', 38, WHITE)
@@ -1112,7 +1077,7 @@ const GALLERY = [
   {
     title: 'MOONRISE',
     // The moon rises over a minute, stars twinkle (pictures.js).
-    draw(p, ms) { p.art(3, 0, Pic.moonrisePixels(ms), { W: WHITE, Y: YELLOW, C: CYAN }, (r) => ((r - 3) * 3 < 40 ? BLUE : BLACK)) },
+    draw(p, ms, pic) { p.art(3, 0, pic(Pic.moonrisePixels, ms), { W: WHITE, Y: YELLOW, C: CYAN }, (r) => ((r - 3) * 3 < 40 ? BLUE : BLACK)) },
   },
   {
     title: 'TEST CARD',
@@ -1130,25 +1095,68 @@ const GALLERY = [
   },
   {
     title: 'THE SEA',
-    draw(p, ms) { p.art(3, 0, Pic.seaPixels(ms), { Y: YELLOW, C: CYAN, B: BLUE, W: WHITE }) },
+    draw(p, ms, pic) { p.art(3, 0, pic(Pic.seaPixels, ms), { Y: YELLOW, C: CYAN, B: BLUE, W: WHITE }) },
   },
   {
     title: 'CITY AT NIGHT',
-    draw(p, ms) { p.art(3, 0, Pic.cityPixels(ms), { Y: YELLOW, B: BLUE, W: WHITE }) },
+    draw(p, ms, pic) { p.art(3, 0, pic(Pic.cityPixels, ms), { Y: YELLOW, B: BLUE, W: WHITE }) },
+  },
+  // 2026-09-28: the aquarium came here from PAUSE (it was 502), and three
+  // more pictures joined it.
+  {
+    title: 'AQUARIUM',
+    draw(p, ms, pic) {
+      for (let r = 3; r <= 21; r++) p.band(r, BLUE)
+      p.art(4, 0, pic(Pic.aquariumPixels, ms), { Y: YELLOW, M: MAGENTA, R: RED, W: WHITE, G: GREEN, C: CYAN }, () => BLUE)
+    },
+  },
+  {
+    title: 'LIGHTHOUSE',
+    draw(p, ms, pic) { p.art(3, 0, pic(Pic.lighthousePixels, ms), { W: WHITE, R: RED, Y: YELLOW, G: GREEN, C: CYAN }, (r) => ((r - 3) * 3 >= Pic.LIGHTHOUSE_HZ ? BLUE : BLACK)) },
+  },
+  {
+    title: 'NORTHERN LIGHTS',
+    draw(p, ms, pic) { p.art(3, 0, pic(Pic.auroraPixels, ms), { W: WHITE, G: GREEN, M: MAGENTA }) },
+  },
+  {
+    title: 'NIGHT TRAIN',
+    draw(p, ms, pic) {
+      const [tail, head] = Pic.trainSpan(ms)
+      p.art(3, 0, pic(Pic.trainPixels, ms), { W: WHITE, Y: YELLOW, B: BLUE, C: CYAN }, (r, c) => {
+        const y = (r - 3) * 3
+        if (y >= Pic.TRAIN_ROOF && y < 42 && c * 2 + 1 >= tail - 1 && c * 2 <= head + 1) return BLACK
+        return y >= Pic.TRAIN_WATER ? BLUE : BLACK
+      })
+    },
   },
 ]
 
+/** Only the picture on screen moves (2026-09-28). Drawing all eight every
+ *  200ms took ~16ms a time in Node -- on the Mac mini's CPU, most of a frame.
+ *  The others are drawn once, frozen at a fixed moment, and cached; a
+ *  subpage that turns shows its still for one redraw, then comes to life. */
+const FROZEN_MS = 4000
+const stills = new Map()
+
 page('700', 'Gallery', {
-  liveMs: 250,
+  liveMs: 200,
   subpageMs: 15000,
   render(ctx) {
-    return GALLERY.map((g, i) => {
+    const live = ctx.env?.sub
+    const draw = (g, i, ms) => {
       const p = new Page()
       masthead(p, '700', 'GALLERY', { sub: i, subs: GALLERY.length, right: 'PICTURES' })
-      g.draw(p, ctx.now)
+      g.draw(p, ms, (fn, t) => fn(t))
       p.text(23, 1, `${g.title}, IN 2 BY 3 BLOCKS`, CYAN)
       p.fast([['INDEX', '100'], ['NEWS', '101'], ['WEATHER', '302'], ['BREATHE', '500']])
       return p
+    }
+    // The set never writes into a page it was handed (carousel.js receive()
+    // reads it and garbles its own copy), so a still can be shared.
+    return GALLERY.map((g, i) => {
+      if (live === undefined || live === i) return draw(g, i, ctx.now)
+      if (!stills.has(i)) stills.set(i, draw(g, i, FROZEN_MS))
+      return stills.get(i)
     })
   },
 })

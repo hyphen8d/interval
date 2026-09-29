@@ -49,7 +49,6 @@ export function summarise(id, data) {
     case 'cities': return { items: data.cities.length, detail: `${data.cities.length} cities, ${data.cities[0].name} ${data.cities[0].temp}${data.units}` }
     case 'launches': return { items: data.launches.length, detail: `next: ${data.launches.find(l => l.net > Date.now())?.mission || 'none'}` }
     case 'holidays': return { items: data.holidays.length, detail: `next: ${data.holidays[0]?.names.join(' / ')} ${data.holidays[0]?.date}` }
-    case 'iss': return { items: 1, detail: `${data.lat.toFixed(1)}, ${data.lon.toFixed(1)}` }
     case 'markets': {
       const age = (Date.now() - Date.parse(data.at)) / 3600e3
       return { items: data.series.length, detail: `${data.series.length} series, built ${Math.round(age)}h ago`, staleHours: Math.round(age) > 96 ? Math.round(age) : 0 }

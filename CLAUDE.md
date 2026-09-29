@@ -66,7 +66,7 @@ imported bare throughout, as in SIGNAL.
 | `markup.js` | The `[y]colour [?]hidden[/?] [dh]` markup editorial pages are written in. |
 | `editorial.json` | Hand-written content: notice pages (190, the welcome, among them), the quiz, the four-keys game, and the thoughts for 501. The admin dashboard edits it. |
 | `program.js` | The set: power, keys, the carousel wait, reception, cycling, drawing a page onto the tube. |
-| `pictures.js` | The moving pictures: the switch-on ident, the clock's digits, the candle, the aquarium, the living gallery, rain and snow. Pure functions of time. |
+| `pictures.js` | The moving pictures: the switch-on ident, the clock's digits, the candle, the living gallery (the aquarium among it), the launch arc, rain and snow. Pure functions of time. |
 | `pointer.js` | Touch: screen position to page cell through the CRT's curve, and tap/swipe classification. Pure. |
 | `constants.js` | `KEYS` (read by page 199, the tests and `index.html`'s summary) and the colour modes. |
 | `sfx.js`, `a11y.js` | The machine's own sounds; the screen-reader live region. |
@@ -108,8 +108,8 @@ rebuilt.
   comes from the weather at the viewer's location (storms and rain), rare
   interference bursts, or `?rx=`.
 - **The seven sections** are `pages.js` `SECTIONS`: news (101-102), today
-  (200-204), weather (300-302), money (401-402), sport (601-606), pause
-  (500-504) and gallery (700), each a single magazine. The index is drawn
+  (200-203), weather (300-302), money (401-402), sport (601-606), pause
+  (500-503) and gallery (700, eight pictures), each a single magazine. The index is drawn
   from the same list, and so is cycling.
 - **Cycling is manual.** N starts it; the set never cycles by itself (a test
   holds that). It shows every page of a section, then the next section, round
@@ -118,13 +118,19 @@ rebuilt.
   holds the *section*; otherwise H holds the page. Keying a page, or a coloured
   key, stops it. While it runs, row 24 is a strip ("CYCLING NEWS  H HOLDS  N
   STOPS") and the coloured keys are hidden. The weather pages that would only
-  ask for a location are skipped until the set has one, and so are the focus
-  timer and the decider (503, 504: pages you use, not watch) and a league
+  ask for a location are skipped until the set has one, and so are pages
+  marked `noCycle` (the focus timer and the decider, 502 and 503: pages you
+  use, not watch) and a league
   with no games this week (`cyclePages`). There is no music;
   the SIGNAL-station soundtrack went with the overnight mode it came from.
 - **Switching on** (2026-09-28): a bright line that widens and opens (the
-  tube warming), then the INTERVAL ident assembling in block letters to a
-  three-note chime (`sfx.playChime`), about 2.4s (`BOOT_MS`). The ident stays
+  tube warming); the decoder reporting in a line at a time with a tick each
+  (`bootLines`, `drawPost`, `sfx.playBootTick`, after SIGNAL's POST: values
+  read from the real page store and sources, never typed in); then the
+  INTERVAL ident assembling in block letters to a three-note chime
+  (`sfx.playChime`), about 5s in all (`BOOT_MS`). The first cut skipped the
+  readout and was over in 2.4s, before it registered. The sources are asked
+  for from the first frame of it, so the wait is also a fetch. The ident stays
   up under the searching header until the first page lands. Any key skips it;
   a number keyed to wake the set skips it outright. A quiet start
   (`?power=on`) has no ident and no sound. Sounds: a rubbery remote thunk on
@@ -134,25 +140,31 @@ rebuilt.
   slow rather than charming. Keep the count visible; never make it a wait.
 - **Pages that move** declare `liveMs` and draw from `pictures.js`: breathe,
   the clock (202, big seven-segment digits and six cities' times), the
-  candle under A thought (501), the aquarium (502), the gallery (the moon
-  rises, windows go on and off, the sea rolls), rain, snow and storms on the
+  candle under A thought (501), the gallery (700: the moon rises, windows go
+  on and off, the sea rolls, fish swim, a lighthouse turns, the northern
+  lights drift, a night train crosses every forty seconds), rain, snow and storms on the
   weather pages, and ten-close bar charts on 401 (built by the workflow into
   `markets.json` `history`). The rule: they move *slowly*. A candle drawn in
   three colours broke into fragments, because a cell holds one; two work.
-  `cycleMs` overrides how long cycling stays on a page (breathe 32s,
-  aquarium 24s).
+  `cycleMs` overrides how long cycling stays on a page (breathe 32s).
+  **The gallery draws only the picture on screen** (`ctx.env.sub`); the other
+  seven are drawn once at a fixed moment and reused. All eight every 200ms was
+  ~16ms a time in Node, most of a frame on the Mac mini. The pictures work
+  around the one-ink-one-paper cell: the lighthouse's bands are whole cell
+  rows, and the night train's black body is the cells' paper (`trainSpan`
+  feeds the bgFor), because windows, body and valley are three colours.
 - **Pages you hold** (2026-09-28, the owner's ask: "pages people hold
-  because they are useful"). **503 Focus**: a 25/5-minute timer on the
+  because they are useful"). **502 Focus**: a 25/5-minute timer on the
   fastext keys (START/PAUSE, RESET, BREAK/WORK). It lives on the program
   (`this.focus`, `focusTick`), not the page, so it keeps running on other
   pages, and when it ends it chimes, says so in the header and announces it.
-  **504 Decide**: red rolls a d20, green flips a coin; the result is fixed
+  **503 Decide**: red rolls a d20, green flips a coin; the result is fixed
   when the key is pressed and the tumble (`ROLL_MS`) is only a show of it.
   **203 Coming up** ticks three countdowns (the weekend, the next US holiday
   from nager.date, the next launch from thespacedevs). `countdown()` shows
   "4D 03:32:58": the first cut counted hours to 99, and "99:32:58" read as a
-  clock. **204 ISS now** is the station on a 5-degree world map
-  (`pictures.js` `LAND`), redrawn every 5s. **300** carries a sunrise/sunset
+  clock. (An ISS tracker, 204, was built and removed the same day.) **300**
+  carries a sunrise/sunset
   line (`sunInfo`). **402 Your money** is gas, the 30-year mortgage,
   inflation, the Fed rate and unemployment, from the same `markets.json`
   (`household`); up is red on every row, since up is bad news for all five.

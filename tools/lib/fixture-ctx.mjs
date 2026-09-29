@@ -28,7 +28,6 @@ export async function fixtureData() {
     markets: F.parseMarkets(fx('markets.json')),
     launches: F.parseLaunches(fx('launches.json')),
     holidays: F.parseHolidays(fx('holidays-us.json')),
-    iss: F.parseIss(fx('iss.json')),
     ...Object.fromEntries(F.LEAGUES.map(([key, , path]) => [`sport_${key}`, F.parseScoreboard(fx(`espn-${path.replace('/', '-')}.json`))])),
     events: fixtureEvents(F),
   }

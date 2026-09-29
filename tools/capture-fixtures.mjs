@@ -51,7 +51,6 @@ const steps = [
   // thespacedevs allows 15 requests an hour; one capture is one of them.
   ['launches.json', async () => get(F.LAUNCHES_URL)],
   ['holidays-us.json', async () => get(F.HOLIDAYS_URL)],
-  ['iss.json', async () => get(F.ISS_URL)],
 ]
 
 let failed = 0

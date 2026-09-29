@@ -266,12 +266,6 @@ export function parseHolidays(json) {
   return { holidays: [...byDate].map(([date, names]) => ({ date, names })) }
 }
 
-export const ISS_URL = 'https://api.wheretheiss.at/v1/satellites/25544'
-export function parseIss(json) {
-  if (!json || !Number.isFinite(json.latitude)) throw new Error('no position in the response')
-  return { lat: json.latitude, lon: json.longitude, alt: json.altitude, kmh: json.velocity, sunlit: json.visibility === 'daylight', at: json.timestamp * 1000 }
-}
-
 /** The markets file the deploy workflow writes (tools/fetch-markets.mjs):
  *  checked for the shape page 401 reads, since it is built elsewhere. */
 export function parseMarkets(json) {
@@ -432,11 +426,6 @@ export const FEEDS = {
     label: 'NAGER.DATE', title: 'Nager.Date: next US public holidays', refreshMs: 24 * 60 * MIN,
     url: () => HOLIDAYS_URL,
     load: async (f) => parseHolidays(await getJSON(f, HOLIDAYS_URL)),
-  },
-  iss: {
-    label: 'WHERETHEISS.AT', title: 'Where the ISS is, now', refreshMs: 10 * 1000, persist: false,
-    url: () => ISS_URL,
-    load: async (f) => parseIss(await getJSON(f, ISS_URL)),
   },
   markets: {
     label: 'FRED', title: 'FRED: market closes (built by the deploy workflow)', refreshMs: 60 * MIN,

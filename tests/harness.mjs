@@ -34,7 +34,6 @@ export function fixtureFetch(url) {
   if (espn) return fixture(`espn-${espn[1]}-${espn[2]}.json`)
   if (u.includes('thespacedevs.com')) return fixture('launches.json')
   if (u.includes('date.nager.at')) return fixture('holidays-us.json')
-  if (u.includes('wheretheiss.at')) return fixture('iss.json')
   // Keyed by the portal's own title; a day not captured is a 404, which is
   // how the harness's own boot time (00:00 UTC on the 29th) exercises the
   // fall-back to yesterday.
@@ -135,7 +134,7 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
   const { Term } = await import('../src/term.js')
   if (!fontCache) fontCache = parseBDF(readFileSync(path.join(root, 'fonts/ter-u16b.bdf'), 'utf8'))
   const config = await import(`../config.js?v=${tag}`)
-  const { default: program } = await import(`../program.js?v=${tag}`)
+  const { default: program, BOOT_MS } = await import(`../program.js?v=${tag}`)
   const term = new Term(fontCache, 40, 25, 6, 5)
   term.setPalette(config.PALETTE)
   const crt = {
@@ -201,8 +200,8 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
     },
   }
   program.init(s)
-  // Switching on runs the ident (program.js BOOT_MS) before the page is
-  // asked for; 4.5s covers that and the page's wait.
-  if (power) { h.key('p'); await h.settle(4500) }
+  // Switching on runs the readout and the ident (program.js BOOT_MS) before
+  // the page is asked for; two more seconds cover the page's wait.
+  if (power) { h.key('p'); await h.settle(BOOT_MS + 2000) }
   return h
 }

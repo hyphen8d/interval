@@ -36,15 +36,42 @@ export const FEED_POLL_MS = 30000
 export const CYCLE_MIN_MS = 12000
 export const CYCLE_MAX_MS = 36000
 /**
- * Switching on (2026-09-28): the tube warms from a bright line, then the
- * INTERVAL ident assembles to a three-note chime, then the set goes to its
- * page. It was a fade to the welcome page, and nothing happened that anyone
- * would remember. Any key skips it; a number keyed to wake the set skips it
- * outright, since that viewer knows where they are going.
+ * Switching on (2026-09-28): the tube warms from a bright line, the decoder
+ * reports in line by line with a tick for each (second pass, after SIGNAL's
+ * POST readout: the first cut went line -> ident in 2.4s and was over
+ * before it registered), then the INTERVAL ident assembles to a three-note
+ * chime, then the set goes to its page. It was a fade to the welcome page
+ * once, and nothing happened that anyone would remember. Any key skips it;
+ * a number keyed to wake the set skips it outright, since that viewer knows
+ * where they are going. The sources are asked for from the first frame, so
+ * the ~5s is spent fetching too, not only watched.
  */
 export const BOOT_LINE_MS = 550
+export const BOOT_POST_LINE_MS = 160
+export const BOOT_POST_HOLD_MS = 450
 export const BOOT_IDENT_MS = 1850
-export const BOOT_MS = BOOT_LINE_MS + BOOT_IDENT_MS
+/** The decoder's readout: [label, value] rows, a blank as null, and [ OK ]
+ *  lines as a string. Values come from the real set -- the page store's
+ *  size, the sources, the page it will open on -- so it can't describe a
+ *  service that doesn't exist (SIGNAL's rule for its own POST). */
+export function bootLines(startPage = '190') {
+  const pages = Pages.pageOrder({ editorial }).length
+  return [
+    ['SYNC', 'LOCKED'],
+    ['DECODER', 'LEVEL 1.5, 40 X 25'],
+    ['CHARACTERS', 'ENGLISH, MOSAIC'],
+    ['PAGE STORE', `${pages} PAGES, ${Pages.SECTIONS.length} SECTIONS`],
+    ['SOURCES', `${Object.keys(FEEDS).length} SUBSCRIBED`],
+    null,
+    'TUBE WARM',
+    'SIGNAL LOCKED',
+    'FASTEXT KEYS READY',
+    `PAGE ${startPage} REQUESTED`,
+  ]
+}
+export const BOOT_POST_MS = bootLines().length * BOOT_POST_LINE_MS + BOOT_POST_HOLD_MS
+export const BOOT_IDENT_AT = BOOT_LINE_MS + BOOT_POST_MS
+export const BOOT_MS = BOOT_IDENT_AT + BOOT_IDENT_MS
 /** How often an open tab asks whether a new build has been deployed. */
 export const BUILD_CHECK_MS = 30 * 60 * 1000
 
@@ -192,7 +219,7 @@ const program = {
     // A quiet start (?power=on: the dashboard's preview, a shared link) goes
     // straight to its page; a switch-on the viewer pressed gets the ident.
     if (quiet) this.request(this.startPage || '190')
-    else this.boot = { t0: perf(), chimed: false }
+    else this.boot = { t0: perf(), chimed: false, ticked: 0, lines: bootLines(this.startPage || '190') }
     this.nextFeedPoll = 0
     if (this.weatherConsent === 'yes' && this.locationState === 'unknown') this.requestLocation()
     announce('INTERVAL switched on.', 'power')
@@ -262,6 +289,9 @@ const program = {
         game: this.game,
         focus: this.focus,
         decide: this.decide,
+        // Which subpage is up, so a page of moving pictures draws only that
+        // one live (the gallery: pages.js).
+        sub: this.sub,
       },
     }
   },
@@ -375,8 +405,8 @@ const program = {
     const def = Pages.pageDef(this.page, this.ctx())
     if (!def?.liveMs) { this.nextLive = Infinity; return }
     this.nextLive = now + def.liveMs
-    // A live page keeps its own sources fresh while it is up -- the ISS every
-    // ten seconds, not at the set's thirty-second round. The cache holds each
+    // A live page keeps its own sources fresh while it is up -- a live
+    // scoreboard every minute, not at the set's thirty-second round. The cache holds each
     // to its own refresh period, so asking every tick costs nothing.
     for (const id of def.feeds || []) this.ensureFeed(id)
     const { pages } = this.render(this.page)
@@ -463,7 +493,7 @@ const program = {
     return Pages.SECTIONS[section].pages.map(([, n]) => n)
       .filter(n => !((n === '300' || n === '301') && this.locationState !== 'granted'))
       // The timer and the dice wait for a key; cycling past them shows nothing.
-      .filter(n => n !== '503' && n !== '504')
+      .filter(n => !Pages.PAGES.get(n)?.noCycle)
       // A league with no games this week is not worth a stop.
       .filter(n => {
         const lg = Pages.LEAGUE_PAGES[n]
@@ -806,18 +836,25 @@ const program = {
   tick(now) {
     this.fxTick(now)
     if (!this.power) return
+    if (now >= this.nextFeedPoll) {
+      this.nextFeedPoll = now + FEED_POLL_MS
+      for (const id of Object.keys(FEEDS)) this.ensureFeed(id)
+    }
     if (this.boot) {
-      const t = now - this.boot.t0
-      if (!this.boot.chimed && t >= BOOT_LINE_MS) { this.boot.chimed = true; sfx.playChime() }
+      const b = this.boot, t = now - b.t0
+      // A tick as each readout line lands; blanks are silent, an [ OK ]
+      // blips higher than a report, and the pitch creeps up (SIGNAL's).
+      const due = Math.min(b.lines.length, Math.floor(Math.max(0, t - BOOT_LINE_MS) / BOOT_POST_LINE_MS) + (t >= BOOT_LINE_MS ? 1 : 0))
+      for (; b.ticked < due; b.ticked++) {
+        const line = b.lines[b.ticked]
+        if (line) sfx.playBootTick(typeof line === 'string' ? 'ok' : 'probe', b.ticked / (b.lines.length - 1))
+      }
+      if (!b.chimed && t >= BOOT_IDENT_AT) { b.chimed = true; sfx.playChime() }
       if (t >= BOOT_MS) this.skipBoot()
       return
     }
     this.updateReception(now)
     this.applyReceptionToTube()
-    if (now >= this.nextFeedPoll) {
-      this.nextFeedPoll = now + FEED_POLL_MS
-      for (const id of Object.keys(FEEDS)) this.ensureFeed(id)
-    }
     if (this.want && now >= this.arriveAt) this.tryArrive(now)
     if (this.page && !this.want && now >= this.nextTx) this.retransmit(now)
     if (this.page && !this.want && now >= this.nextLive) this.liveRender(now)
@@ -918,8 +955,10 @@ const program = {
       const c0 = Math.floor((T.COLS - w) / 2)
       const h = k > 0.7 ? Math.round((k - 0.7) / 0.3 * 12) : 0
       for (let r = 12 - h; r <= 12 + h; r++) P.band(r, T.WHITE, c0, c0 + w)
+    } else if (t < BOOT_IDENT_AT) {
+      this.drawPost(P, t - BOOT_LINE_MS)
     } else {
-      const k = Math.min(1, (t - BOOT_LINE_MS) / (BOOT_IDENT_MS * 0.6))
+      const k = Math.min(1, (t - BOOT_IDENT_AT) / (BOOT_IDENT_MS * 0.6))
       P.art(7, 8, Pic.identPixels('INTERVAL', k), { R: T.RED, Y: T.YELLOW, G: T.GREEN, C: T.CYAN, M: T.MAGENTA })
       const bars = [T.WHITE, T.YELLOW, T.CYAN, T.GREEN, T.MAGENTA, T.RED, T.BLUE, T.WHITE]
       const shown = Math.floor(Math.min(1, k * 1.4) * bars.length)
@@ -930,6 +969,28 @@ const program = {
       const row = P.cells[y]
       for (let x = 0; x < T.COLS; x++) this.putCell(y, x, row[x], row[x], null)
     }
+  },
+
+  /** The decoder's readout, one line every BOOT_POST_LINE_MS, under a
+   *  double-height name, with a cursor block on the line to come. */
+  drawPost(P, t) {
+    const lines = this.boot?.lines || bootLines(this.startPage || '190')
+    P.double(3, 2, 'INTERVAL', T.YELLOW)
+    P.text(3, 12, 'TELETEXT DECODER', T.WHITE)
+    const shown = Math.min(lines.length, Math.floor(t / BOOT_POST_LINE_MS) + 1)
+    for (let i = 0; i < shown; i++) {
+      const line = lines[i], r = 6 + i
+      if (!line) continue
+      if (typeof line === 'string') {
+        P.text(r, 2, '[', T.WHITE); P.text(r, 4, 'OK', T.GREEN); P.text(r, 7, ']', T.WHITE)
+        P.text(r, 9, line, T.WHITE)
+      } else {
+        P.text(r, 2, line[0].padEnd(11), T.CYAN)
+        P.text(r, 13, ':', T.WHITE)
+        P.text(r, 15, line[1], T.WHITE)
+      }
+    }
+    if (shown < lines.length && Math.floor(t / 250) % 2 === 0) P.band(6 + shown, T.WHITE, 2, 3)
   },
 
   /** Row 24 while cycling: where the set is and the two keys that matter.

@@ -69,6 +69,28 @@ export function playPageTick() {
   } catch (e) {}
 }
 
+/** A line of the switch-on readout landing (from SIGNAL's sfx.js): a
+ *  report is a low square blip, an [ OK ] a brighter triangle one, and the
+ *  pitch creeps up through the sequence. A few cents of wobble each, since
+ *  identical pitches in a row read as a synthesizer and not as hardware. */
+export function playBootTick(kind, progress = 0) {
+  try {
+    const ctx = audioCtx()
+    const t = ctx.currentTime
+    const ok = kind === 'ok'
+    const o = ctx.createOscillator()
+    o.type = ok ? 'triangle' : 'square'
+    o.frequency.setValueAtTime((ok ? 760 : 380) + (ok ? 180 : 90) * progress + (Math.random() * 14 - 7), t)
+    const g = ctx.createGain()
+    const len = ok ? 0.05 : 0.03
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(ok ? 0.06 : 0.035, t + 0.004)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len)
+    o.connect(g).connect(ctx.destination)
+    o.start(t); o.stop(t + len + 0.01)
+  } catch (e) {}
+}
+
 /** The service's ident: three bell-ish notes rising, played as the logo
  *  assembles at switch-on. The one musical sound the set makes. */
 export const CHIME_HZ = [784, 1047, 1319]
