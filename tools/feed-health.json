@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-09-29T01:00:36.325Z",
+  "checkedAt": "2026-09-29T01:42:57.906Z",
   "feeds": {
     "itn": {
       "id": "itn",
@@ -113,6 +113,20 @@
       "cors": true,
       "strikes": 0,
       "lastOk": "2026-09-29T01:00:36.325Z"
+    },
+    "events": {
+      "id": "events",
+      "title": "Wikipedia: Current events (today, then yesterday)",
+      "checkedAt": "2026-09-29T01:42:57.906Z",
+      "items": 8,
+      "detail": "8 current events, today and yesterday",
+      "ok": true,
+      "ms": 303,
+      "requests": 2,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T01:42:57.906Z"
     }
   }
 }

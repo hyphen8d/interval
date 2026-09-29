@@ -10,6 +10,7 @@ unused fields dropped) and otherwise untouched.
 | file | source |
 | --- | --- |
 | wiki-itn.json | en.wikipedia.org action API, parse of Template:In_the_news |
+| wiki-current-events.json | en.wikipedia.org action API, parse of Portal:Current_events for 2026_September_28 and _27, keyed by title |
 | wiki-onthisday.json | en.wikipedia.org REST, feed/onthisday/all/09/28 (trimmed) |
 | wiki-featured.json | en.wikipedia.org REST, feed/featured/2026/09/28 (tfa + mostread, trimmed) |
 | usgs-4.5-day.json | earthquake.usgs.gov summary/4.5_day.geojson |

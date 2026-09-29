@@ -88,6 +88,46 @@ export function parseITN(json) {
   return out
 }
 
+/**
+ * Wikipedia's Current events portal for one day: every item, with the
+ * section it was filed under. The items are the innermost list entries of
+ * the page's content block -- the outer entries are topic headings ("Somali
+ * Civil War") with the news nested beneath -- and each ends in bracketed
+ * source citations, "(Reuters) (AP)", which are dropped after the final full
+ * stop. The portal also carries an edit/history navbar, which is why only
+ * the content block is read.
+ *
+ * Added 2026-09-28 because "In the news" alone is four or five short items:
+ * page 101 came out as one screen, or one screen and a lone story on a
+ * second. The portal is where those items are written up in the first place.
+ */
+export function parseCurrentEvents(json) {
+  let html = json?.parse?.text
+  if (typeof html !== 'string') throw new Error('no parse.text in the response')
+  html = html.replace(/<style[\s\S]*?<\/style>/g, '')
+  const start = html.indexOf('current-events-content')
+  if (start < 0) return []
+  const end = html.indexOf('current-events-nav', start)
+  html = html.slice(start, end > 0 ? end : undefined)
+  const items = []
+  const stack = []
+  let category = null
+  const re = /<(\/?)(li|ul)\b[^>]*>|<p>\s*<b>([\s\S]*?)<\/b>/g
+  let m
+  while ((m = re.exec(html))) {
+    if (m[3] !== undefined) { category = stripTags(m[3]); continue }
+    const [, close, tag] = m
+    if (tag === 'ul') { if (stack.length) stack[stack.length - 1].hasList = true; continue }
+    if (!close) { stack.push({ from: re.lastIndex, hasList: false }); continue }
+    const li = stack.pop()
+    if (!li || li.hasList) continue
+    let text = stripTags(html.slice(li.from, m.index))
+    text = text.replace(/([.!?]["']?)\s*(\([^()]{1,80}\)\s*)+$/, '$1').trim()
+    if (text.length > 20) items.push({ category, text: fold(text) })
+  }
+  return items
+}
+
 const year = (e) => (Number.isFinite(e?.year) ? e.year : null)
 // "(pictured)" points at a photo the page cannot show; holidays arrive with a
 // newline between the kind of day and its name.
@@ -245,6 +285,10 @@ export const HN_TOP_URL = 'https://hacker-news.firebaseio.com/v0/topstories.json
 export const hnItemUrl = (id) => `https://hacker-news.firebaseio.com/v0/item/${id}.json`
 export const KP_URL = 'https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json'
 export const SIGNAL_ROSTER_URL = 'https://hyphen8d.github.io/signal/stations.js'
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+/** The portal is dated in UTC: that is when Wikipedia's day turns over. */
+export const currentEventsTitle = (d) => `${d.getUTCFullYear()}_${MONTHS[d.getUTCMonth()]}_${d.getUTCDate()}`
+export const currentEventsUrl = (d) => `https://en.wikipedia.org/w/api.php?action=parse&page=Portal:Current_events/${currentEventsTitle(d)}&prop=text&format=json&formatversion=2&origin=*`
 export const onThisDayUrl = (d) => `https://en.wikipedia.org/api/rest_v1/feed/onthisday/all/${mmdd(d)}`
 export const featuredUrl = (d) => `https://en.wikipedia.org/api/rest_v1/feed/featured/${ymd(d)}`
 export function forecastUrl(lat, lon, units) {
@@ -274,6 +318,20 @@ export const FEEDS = {
     label: 'WIKIPEDIA', title: 'Wikipedia: In the news', refreshMs: 30 * MIN,
     url: () => ITN_URL,
     load: async (f) => parseITN(await getJSON(f, ITN_URL)),
+  },
+  events: {
+    label: 'WIKIPEDIA', title: 'Wikipedia: Current events (today, then yesterday)', refreshMs: 30 * MIN,
+    key: (env) => currentEventsTitle(env.date()),
+    url: (env) => currentEventsUrl(env.date()),
+    // Today's page is thin early in the (UTC) day, so yesterday's follows it.
+    // A missing day is an empty list, not a failure; both missing is.
+    load: async (f, env) => {
+      const today = env.date(), yesterday = new Date(today.getTime() - 864e5)
+      const days = await Promise.all([today, yesterday].map(d =>
+        getJSON(f, currentEventsUrl(d)).then(parseCurrentEvents).catch(() => null)))
+      if (days.every(d => d === null)) throw new Error('neither day could be read')
+      return { items: days.flatMap(d => d || []) }
+    },
   },
   featured: {
     label: 'WIKIPEDIA', title: 'Wikipedia: featured article and most read', refreshMs: 60 * MIN,

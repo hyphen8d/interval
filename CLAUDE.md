@@ -150,6 +150,17 @@ had no `news` key on any date sampled back to 2025. Page 101 reads the
 action API's parse of `Template:In_the_news` instead, and `parseITN` cuts
 off the template's transcluded documentation.
 
+**News is two full screens** (2026-09-28). "In the news" alone is four or five
+short items, which made 101 one screen, or one screen plus a single story on a
+second. So 101 leads with those, then fills out from Wikipedia's **Current
+events portal** (feed `events`: today's page in UTC, then yesterday's, since
+today's is thin early on). Each item becomes a brief of its first sentence,
+anything telling the same story as a top item is dropped (`sameStory`: two
+shared names), and briefs that had to be cut off with "..." go last.
+`fillPages` packs exactly two subpages, letting a later block fill a gap an
+earlier one couldn't. What doesn't fit is dropped, because a headline page is
+a selection.
+
 `tests/fixtures/` are real captures (see its README). A fake built from a spec
 proves only that you read your own assumption. That's SIGNAL's STATION BREAK
 lesson, and it's why the parsers are tested only against captures.

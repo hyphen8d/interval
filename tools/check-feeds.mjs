@@ -42,6 +42,7 @@ const flag = (n) => argv.find(a => a.startsWith(`--${n}=`))?.slice(n.length + 3)
 export function summarise(id, data) {
   switch (id) {
     case 'itn': return { items: data.stories.length, detail: `${data.stories.length} stories, ${data.deaths.length} deaths` }
+    case 'events': return { items: data.items.length, detail: `${data.items.length} current events, today and yesterday` }
     case 'otd': return { items: data.selected.length + data.events.length, detail: `${data.selected.length} selected, ${data.events.length} events` }
     case 'featured': return { items: data.mostread.length + (data.tfa ? 1 : 0), detail: `${data.tfa ? `article "${data.tfa.title}"` : 'no article'}, ${data.mostread.length} most read` }
     case 'quakes': return { items: data.length, detail: `${data.length} quakes in the past day` }

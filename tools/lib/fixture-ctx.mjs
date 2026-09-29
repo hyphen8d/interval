@@ -22,6 +22,7 @@ export async function fixtureData() {
     kp: F.parseKp(fx('swpc-kp.json')),
     weather: F.parseForecast(fx('open-meteo.json')),
     signal: F.parseSignalRoster(fx('signal-stations.json')),
+    events: { items: Object.values(fx('wiki-current-events.json')).flatMap(F.parseCurrentEvents) },
   }
 }
 

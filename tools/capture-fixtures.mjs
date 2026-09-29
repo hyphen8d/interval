@@ -32,6 +32,15 @@ const slimEv = (e) => ({ text: e.text, year: e.year, pages: (e.pages || []).slic
 const d = new Date(2026, 8, 28) // the fixtures are for one fixed day; tests assume it
 const steps = [
   ['wiki-itn.json', async () => get(F.ITN_URL)],
+  ['wiki-current-events.json', async () => {
+    const out = {}
+    for (const day of [d, new Date(d.getTime() - 864e5)]) {
+      // The fixture day in UTC terms, as the set asks for it.
+      const title = F.currentEventsTitle(new Date(Date.UTC(day.getFullYear(), day.getMonth(), day.getDate(), 12)))
+      out[title] = await get(F.currentEventsUrl(new Date(Date.UTC(day.getFullYear(), day.getMonth(), day.getDate(), 12))))
+    }
+    return out
+  }],
   ['wiki-onthisday.json', async () => {
     const o = await get(F.onThisDayUrl(d))
     return { selected: o.selected.slice(0, 12).map(slimEv), events: o.events.slice(0, 24).map(slimEv), births: o.births.slice(0, 16).map(slimEv), deaths: o.deaths.slice(0, 16).map(slimEv), holidays: o.holidays.slice(0, 6).map(e => ({ text: e.text, pages: (e.pages || []).slice(0, 1).map(slimPage) })) }

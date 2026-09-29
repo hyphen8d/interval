@@ -253,15 +253,79 @@ page('100', 'Index', {
   },
 })
 
+/** The first sentence of a news item, which is what a teletext brief is.
+ *  The portal's items run to ten lines; a headline page wants two to four. */
+export function brief(text, max = 170) {
+  const first = String(text).match(/^.+?[.!?](?=\s+[A-Z0-9"']|$)/)?.[0] ?? String(text)
+  return first.length <= max ? first : `${clip(first, max - 3)}...`
+}
+
+/** Capitalised words, for spotting the same story told twice. */
+const namesIn = (t) => new Set((t.match(/\b[A-Z][a-z]{3,}\b/g) || []).filter(w => !['The', 'This', 'That', 'After', 'During', 'Former'].includes(w)))
+export function sameStory(a, b) {
+  const na = namesIn(a)
+  let shared = 0
+  for (const w of namesIn(b)) if (na.has(w)) shared++
+  return shared >= 2
+}
+
+/**
+ * Fill exactly `pages` subpages from `blocks`, in order, skipping any block
+ * that does not fit what is left of a page for a later one that does -- so
+ * each page ends full rather than with a gap, or with one story on its own. Blocks that do not make it
+ * are dropped: there is more news than two screens, and that is the point
+ * of a headline page.
+ */
+export function fillPages(blocks, pages, { top = BODY_TOP, bottom = BODY_BOTTOM, gap = 1 } = {}) {
+  const out = []
+  const left = blocks.slice()
+  for (let pg = 0; pg < pages && left.length; pg++) {
+    const placed = []
+    let row = top
+    for (let k = 0; k < left.length;) {
+      const b = left[k]
+      if (row + b.height - 1 <= bottom) { placed.push({ block: b, row }); row += b.height + gap; left.splice(k, 1) }
+      else k++
+    }
+    if (placed.length) out.push(placed)
+  }
+  return out
+}
+
 page('101', 'News headlines', {
-  feeds: ['itn'],
+  // Two full screens (2026-09-28): "In the news" first -- Wikipedia's own
+  // pick of the day -- then the day's Current events portal, briefed to a
+  // first sentence, to fill the rest. The top stories alone were four short
+  // items: one screen, or one and a lone story on a second.
+  feeds: ['itn', 'events'],
   subpageMs: 12000,
   render(ctx) {
-    return gate(ctx, '101', 'NEWS', ['itn'], ({ itn }) =>
-      listPage('101', 'NEWS', itn.stories.map(s => textBlock(null, s, { fg: WHITE })), ctx, {
-        feed: 'itn', right: 'IN THE NEWS',
-        fast: [['Ongoing', '102'], ['Most read', '104'], ['Tech', '150'], ['Index', '100']],
-      }))
+    return gate(ctx, '101', 'NEWS', ['itn'], ({ itn }) => {
+      const events = ctx.entry('events')?.data?.items || []
+      const briefs = []
+      for (const e of events) {
+        const t = brief(e.text)
+        if ([...itn.stories, ...briefs].some(s => sameStory(s, t))) continue
+        briefs.push(t)
+      }
+      // Briefs that had to be cut off with "..." go after the ones that fit
+      // whole: a sentence that ends reads as news, one that trails off as a
+      // fault. They are there to fill a gap only if nothing whole fits it.
+      const whole = briefs.filter(t => !t.endsWith('...')), cut = briefs.filter(t => t.endsWith('...'))
+      const blocks = [
+        ...itn.stories.map(s => textBlock(null, s, { fg: WHITE })),
+        ...[...whole, ...cut].map(s => textBlock(null, s, { fg: CYAN })),
+      ]
+      const laid = fillPages(blocks, 2)
+      return laid.map((placed, i) => {
+        const p = new Page()
+        masthead(p, '101', 'NEWS', { sub: i, subs: laid.length, right: 'HEADLINES' })
+        for (const { block, row } of placed) block.draw(p, row)
+        creditLine(p, ctx, 'itn')
+        p.fast([['Ongoing', '102'], ['Most read', '104'], ['Tech', '150'], ['Index', '100']])
+        return p
+      })
+    })
   },
 })
 

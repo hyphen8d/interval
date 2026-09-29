@@ -148,3 +148,35 @@ test('rows stay within forty columns everywhere', () => {
     }
   }
 })
+
+test('news is two full screens: In the news first, then the day briefed', async () => {
+  const { brief, sameStory, fillPages } = await import('../pages.js')
+  assert.equal(brief('Polish jets are scrambled. Individuals are urged to shelter.'), 'Polish jets are scrambled.')
+  assert.ok(brief('x '.repeat(200)).endsWith('...'))
+  assert.ok(sameStory('Hashim Thaci of Kosovo is sentenced', 'Kosovo court sentences Hashim Thaci'))
+  assert.ok(!sameStory('Russian strikes on Kyiv', 'Floods in Nepal and India'))
+  const rows = (h) => ({ height: h, draw() {} })
+  // 18 rows, a blank row between blocks: 5+5 leaves 7, the 9 cannot go
+  // there, the 4 behind it can -- and the 9 opens the second page.
+  const laid = fillPages([rows(5), rows(5), rows(9), rows(4), rows(6), rows(6), rows(6)], 2)
+  assert.equal(laid.length, 2, 'never more than two')
+  assert.deepEqual(laid[0].map(p => p.block.height), [5, 5, 4], 'a block that does not fit makes way for one that does')
+  assert.deepEqual(laid[1].map(p => p.block.height), [9, 6])
+
+  const ctx = ctxWith({ ...allData(), events: { items: Object.values(fx('wiki-current-events.json')).flatMap(F.parseCurrentEvents) } })
+  const subs = pageDef('101', ctx).render(ctx)
+  assert.equal(subs.length, 2)
+  const text = subs.map(p => p.lines().join(' ')).join(' ')
+  assert.ok(text.indexOf('Brisbane Lions') < text.indexOf('Polish military'), 'the top stories lead')
+  for (const p of subs) {
+    const used = p.lines().slice(4, 22).filter(Boolean).length
+    assert.ok(used >= 13, `a subpage is filled (${used} of 18 rows carry text, the rest are gaps between stories)`)
+  }
+})
+
+test('news still shows the top stories when Current events is down', () => {
+  const ctx = ctxWith(allData(), {}, { errors: { events: 'HTTP 503' } })
+  const subs = pageDef('101', ctx).render(ctx)
+  assert.ok(subs.length >= 1)
+  assert.match(subs[0].lines().join(' '), /Brisbane Lions/)
+})

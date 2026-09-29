@@ -279,7 +279,10 @@ test('the screen reader hears each page as it arrives, not the clock', async () 
   const before = h.announced.length
   await h.go('101', 3500)
   const said = h.announced.slice(before)
-  assert.ok(said.some(s => s.startsWith('Page 101, News headlines.') && s.includes('Brisbane Lions win their third premiership')))
+  // Whichever subpage the loop was sending when it arrived, read as prose.
+  const speech = h.program.truth.speech()
+  assert.ok(speech.length > 100)
+  assert.ok(said.some(s => s.startsWith('Page 101, News headlines, ') && s.includes(speech)))
   const n = h.announced.length
   h.advance(5000)
   assert.equal(h.announced.length, n, 'nothing new while the page just sits there')

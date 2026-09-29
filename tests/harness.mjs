@@ -29,6 +29,11 @@ let fontCache = null
 export function fixtureFetch(url) {
   const u = String(url)
   if (u.includes('Template:In_the_news')) return fixture('wiki-itn.json')
+  // Keyed by the portal's own title; a day not captured is a 404, which is
+  // how the harness's own boot time (00:00 UTC on the 29th) exercises the
+  // fall-back to yesterday.
+  const ce = u.match(/Portal:Current_events\/(\w+)&/)
+  if (ce) return fixture('wiki-current-events.json')[ce[1]] ?? null
   if (u.includes('/feed/onthisday/')) return fixture('wiki-onthisday.json')
   if (u.includes('/feed/featured/')) return fixture('wiki-featured.json')
   if (u.includes('earthquake.usgs.gov')) return fixture('usgs-4.5-day.json')
