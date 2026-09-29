@@ -215,3 +215,13 @@ test('on this day and born today are six screens, not eighteen', () => {
   assert.equal(pageDef('200', ctx).render(ctx).length, 6)
   assert.ok(pageDef('201', ctx).render(ctx).length <= 6)
 })
+
+test('markets draw the last ten closes as a little bar chart', async () => {
+  const { sparkline } = await import('../pages.js')
+  const { Page } = await import('../teletext.js')
+  const p = new Page()
+  sparkline(p, 5, 1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 2)
+  // 1..10 scaled to heights 1-3, two a cell: (1,2)->1 1, (3,4)->1 2,
+  // (5,6)->2 2, (7,8)->2 3, (9,10)->3 3.
+  assert.deepEqual(p.cells[5].slice(1, 6).map(c => c.mos), [16 | 32, 16 | 40, 20 | 40, 20 | 42, 21 | 42])
+})

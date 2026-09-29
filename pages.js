@@ -17,7 +17,10 @@
 //   render   (ctx) -> Page[] -- one Page per subpage.
 //
 //   liveMs   re-draw the page this often while it is up, for a page that
-//            moves (the breathing page, the world population count).
+//            moves (breathe, the clock, the candle, the aquarium, the
+//            gallery, weather that rains). The pictures are pictures.js.
+//   cycleMs  how long cycling (N) leaves the page up, where the default
+//            (its subpages' worth, 12-36s) is wrong for it.
 //
 // ctx: { entry(feedId), status(feedId), env, now, date, editorial }
 //
@@ -45,6 +48,7 @@ const {
 const { KEYS, FASTEXT_ALT } = await import(`./constants.js?v=${V}`)
 const { FEEDS, staleAfter } = await import(`./feeds.js?v=${V}`)
 const { drawLines } = await import(`./markup.js?v=${V}`)
+const Pic = await import(`./pictures.js?v=${V}`)
 
 export const BODY_TOP = 4
 export const BODY_BOTTOM = 21
@@ -72,10 +76,10 @@ export const MAGAZINES = {
  */
 export const SECTIONS = [
   { name: 'NEWS', pages: [['HEADLINES', '101'], ['FACTS', '102']] },
-  { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201']] },
+  { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201'], ['CLOCK', '202']] },
   { name: 'WEATHER', pages: [['TODAY', '300'], ['5-DAY', '301'], ['US CITIES', '302']] },
   { name: 'MONEY', pages: [['MARKETS', '401'], ['THE WORLD', '410']] },
-  { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501']] },
+  { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501'], ['AQUARIUM', '502']] },
   { name: 'GALLERY', pages: [['PICTURES', '700']] },
 ]
 export const sectionOf = (num) => SECTIONS.findIndex(s => s.pages.some(([, n]) => n === String(num).toUpperCase()))
@@ -216,7 +220,8 @@ const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
 const compass = (deg) => (Number.isFinite(deg) ? COMPASS[Math.round(deg / 45) % 8] : '')
 
 /** A small weather picture, 11 columns by 4 rows, for a WMO code. */
-function weatherIcon(code) {
+function weatherIcon(code, ms = 0) {
+  const f = Math.floor(ms / 250)
   const sun = (x, y) => (x - 7) ** 2 + (y - 5) ** 2 < 18
   const cloud = (x, y) => ((x - 13) / 8) ** 2 + ((y - 7.5) / 3.3) ** 2 < 1 || ((x - 10) / 4) ** 2 + ((y - 5.5) / 3) ** 2 < 1
   const kind = wmoWords(code)[2]
@@ -227,9 +232,10 @@ function weatherIcon(code) {
     const c = cloud(x, y - 1.5)
     if (c) return 'W'
     if (y >= 9) {
-      if ((kind === 'RAIN' || kind === 'SHWR' || kind === 'DRZL') && (x + y) % 4 === 0 && x > 5 && x < 20) return 'C'
-      if ((kind === 'SNOW' || kind === 'ICE') && (x * 3 + y) % 5 === 0 && x > 5 && x < 20) return 'W'
-      if ((kind === 'STRM' || kind === 'HAIL') && x === 12 - (y - 9)) return 'Y'
+      // The drops fall: the pattern steps down a row every quarter second.
+      if ((kind === 'RAIN' || kind === 'SHWR' || kind === 'DRZL') && (x + y - f) % 4 === 0 && x > 5 && x < 20) return 'C'
+      if ((kind === 'SNOW' || kind === 'ICE') && (x * 3 + y - f) % 5 === 0 && x > 5 && x < 20) return 'W'
+      if ((kind === 'STRM' || kind === 'HAIL') && x === 12 - (y - 9) && f % 6 < 2) return 'Y'
     }
     return null
   })
@@ -564,11 +570,12 @@ function weatherGate(num, title, ctx, fn) {
 
 page('300', 'Weather: today', {
   feeds: ['weather'],
+  liveMs: 250,
   render(ctx) {
     return weatherGate('300', 'WEATHER', ctx, (w) => {
       const p = new Page()
       masthead(p, '300', 'WEATHER', { right: 'TODAY' })
-      p.art(BODY_TOP, 1, weatherIcon(w.current.code), { W: WHITE, Y: YELLOW, C: CYAN })
+      p.art(BODY_TOP, 1, weatherIcon(w.current.code, ctx.now), { W: WHITE, Y: YELLOW, C: CYAN })
       p.text(BODY_TOP, 14, 'NOW', YELLOW)
       p.double(BODY_TOP + 1, 14, `${w.current.temp}${w.units}`, WHITE)
       p.text(BODY_TOP + 1, 22, clip(wmoWords(w.current.code)[1], 17), CYAN)
@@ -630,6 +637,7 @@ page('301', 'Weather: five days', {
  *  location, so cycling can show it to everyone. */
 page('302', 'Weather: US cities', {
   feeds: ['cities'],
+  liveMs: 220,
   render(ctx) {
     return gate(ctx, '302', 'US CITIES', ['cities'], ({ cities }) => {
       const p = new Page()
@@ -642,12 +650,49 @@ page('302', 'Weather: US cities', {
         p.text(r, 1, c.name, i % 2 ? WHITE : YELLOW)
         p.text(r, 15, `${c.temp}${cities.units}`.padStart(4), hot ? RED : cold ? CYAN : WHITE)
         p.text(r, 22, clip(wmoWords(c.code)[2], 5), GREEN)
+        // Where it is raining, snowing or storming, the row shows it.
+        const kind = Pic.weatherKind(c.code)
+        if (kind) for (const k of [0, 1]) p.mosaic(r, 27 + k, Pic.weatherCell(kind, ctx.now, k), kind === 'snow' ? WHITE : kind === 'storm' ? YELLOW : CYAN)
         p.text(r, 30, `${c.hi}/${c.lo}`.padStart(8), WHITE)
       })
       creditLine(p, ctx, 'cities')
       p.fast([['TODAY', '300'], ['5-DAY', '301'], ['NEWS', '101'], ['INDEX', '100']])
       return [p]
     })
+  },
+})
+
+/**
+ * The clock (2026-09-28): the time in big seven-segment digits, the date, and
+ * the time in five other cities. Ceefax had a clock page, and it is the
+ * page most worth leaving up.
+ */
+export const WORLD_CLOCKS = [
+  ['LOS ANGELES', 'America/Los_Angeles'], ['NEW YORK', 'America/New_York'], ['LONDON', 'Europe/London'],
+  ['BERLIN', 'Europe/Berlin'], ['TOKYO', 'Asia/Tokyo'], ['SYDNEY', 'Australia/Sydney'],
+]
+const hhmmIn = (ms, tz) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz })
+page('202', 'Clock', {
+  liveMs: 500,
+  render(ctx) {
+    const p = new Page()
+    masthead(p, '202', 'CLOCK', { right: 'TODAY' })
+    const d = new Date(ctx.now)
+    const t = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
+    const px = Pic.clockPixels(t)
+    const cells = Math.ceil(px[0].length / 2)
+    p.art(BODY_TOP + 1, Math.floor((COLS - cells) / 2), px, { Y: YELLOW })
+    const date = longDate(ctx.now)
+    p.text(BODY_TOP + 7, Math.floor((COLS - date.length) / 2), date, CYAN)
+    WORLD_CLOCKS.forEach(([name, tz], i) => {
+      const r = BODY_TOP + 10 + Math.floor(i / 2) * 2, c = i % 2 ? 21 : 1
+      p.text(r, c, name, WHITE)
+      let hm = '--:--'
+      try { hm = hhmmIn(ctx.now, tz) } catch (e) { /* no time zone data */ }
+      p.text(r, c + 13, hm, YELLOW)
+    })
+    p.fast([['TODAY', '200'], ['NEWS', '101'], ['PAUSE', '500'], ['INDEX', '100']])
+    return [p]
   },
 })
 
@@ -668,6 +713,17 @@ function move(now, prev) {
 /** 51,481.51 -> "51,481.51"; the index levels want their thousands. */
 const grouped = (x, dp = 2) => x.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })
 const shortDay = (iso) => { const d = new Date(`${iso}T12:00`); return `${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0, 3)}` }
+
+/**
+ * A bar chart in one row: two bars a cell, each 0-3 blocks high, scaled from
+ * the lowest value to the highest. Ten closes make five cells.
+ */
+export function sparkline(p, r, c, values, ink) {
+  const lo = Math.min(...values), hi = Math.max(...values), span = hi - lo || 1
+  const h = values.map(v => 1 + Math.round((v - lo) / span * 2))
+  const LEFT = [0, 16, 20, 21], RIGHT = [0, 32, 40, 42]
+  for (let i = 0; i < h.length; i += 2) p.mosaic(r, c + i / 2, LEFT[h[i]] | RIGHT[h[i + 1] ?? 0], ink)
+}
 
 /**
  * World markets at the close (2026-09-28): the Dow, the S&P 500, the
@@ -691,6 +747,7 @@ page('401', 'World markets', {
         const m = move(s.value, s.prev)
         if (m) { const c = m.up === null ? WHITE : m.up ? GREEN : RED; p.text(r, 29, m.mark, c); p.text(r, 30, m.pct.padStart(6), c) }
         p.text(r + 1, 18, `CLOSE ${shortDay(s.date)}`.padStart(10), CYAN)
+        if (s.history?.length > 1) sparkline(p, r + 1, 1, s.history, s.value >= s.history[0] ? GREEN : RED)
         r += 2
       }
       // The file is rebuilt a few times each weekday; one that has not been
@@ -773,6 +830,7 @@ export function breathAt(ms) {
 }
 page('500', 'Breathe', {
   liveMs: 200,
+  cycleMs: 32000,
   render(ctx) {
     const b = breathAt(ctx.now)
     const p = new Page()
@@ -805,16 +863,33 @@ export function thoughtFor(list, nowMs) {
   return list[day % list.length]
 }
 page('501', 'A thought', {
+  liveMs: 140,
   render(ctx) {
     const t = thoughtFor(ctx.editorial.thoughts, ctx.now)
     const p = new Page()
     masthead(p, '501', 'A THOUGHT', { right: 'FOR TODAY' })
     if (!t) { p.wrap(BODY_TOP, 1, 'No thoughts written yet.', 38, CYAN); return [p] }
     const lines = wrapText(`"${t.text}"`, 36)
-    let r = Math.max(BODY_TOP + 1, 12 - lines.length)
+    let r = BODY_TOP + 1
     for (const l of lines) p.text(r++, 2, l, YELLOW)
     if (t.by) p.text(r + 1, 38 - Math.min(36, t.by.length + 2), clip(`- ${t.by}`, 36), CYAN)
+    // A candle under it, for the empty half of the page (2026-09-28).
+    p.art(11, 14, Pic.candlePixels(ctx.now), { Y: YELLOW, R: RED, W: WHITE })
     p.fast([['BREATHE', '500'], ['INDEX', '100'], ['NEWS', '101'], ['GALLERY', '700']])
+    return [p]
+  },
+})
+
+page('502', 'Aquarium', {
+  liveMs: 120,
+  cycleMs: 24000,
+  render(ctx) {
+    const p = new Page()
+    masthead(p, '502', 'AQUARIUM', { right: 'PAUSE' })
+    for (let r = 4; r <= 20; r++) p.band(r, BLUE)
+    p.art(4, 0, Pic.aquariumPixels(ctx.now), { Y: YELLOW, M: MAGENTA, R: RED, W: WHITE, G: GREEN, C: CYAN }, () => BLUE)
+    p.text(22, 1, 'NOTHING TO READ HERE. WATCH THE FISH.', GREEN)
+    p.fast([['BREATHE', '500'], ['THOUGHT', '501'], ['GALLERY', '700'], ['INDEX', '100']])
     return [p]
   },
 })
@@ -824,19 +899,8 @@ page('501', 'A thought', {
 const GALLERY = [
   {
     title: 'MOONRISE',
-    draw(p) {
-      const HZ = 40
-      const art = pixels(80, 57, (x, y) => {
-        if ((x - 57) ** 2 + (y - 14) ** 2 < 62) return 'W'
-        if (y < HZ) return hash2(x, y) > 0.986 ? 'Y' : null
-        if (y === HZ) return 'C'
-        const spread = 2 + (y - HZ) / 4
-        if (Math.abs(x - 57) < spread && (x * 3 + y * 5) % 4 !== 0 && y % 2 === 0) return 'Y'
-        if (y % 3 === 0 && (x + y * 5) % 13 < 3) return 'C'
-        return null
-      })
-      p.art(3, 0, art, { W: WHITE, Y: YELLOW, C: CYAN }, (r) => ((r - 3) * 3 < HZ ? BLUE : BLACK))
-    },
+    // The moon rises over a minute, stars twinkle (pictures.js).
+    draw(p, ms) { p.art(3, 0, Pic.moonrisePixels(ms), { W: WHITE, Y: YELLOW, C: CYAN }, (r) => ((r - 3) * 3 < 40 ? BLUE : BLACK)) },
   },
   {
     title: 'TEST CARD',
@@ -854,44 +918,22 @@ const GALLERY = [
   },
   {
     title: 'THE SEA',
-    draw(p) {
-      // Swell lines under a low sun: three sine waves, each a band of dots.
-      const art = pixels(80, 57, (x, y) => {
-        if ((x - 22) ** 2 + ((y - 16) * 1.6) ** 2 < 70) return 'Y'
-        for (const [base, amp, len, ch] of [[30, 2, 23, 'C'], [38, 3, 17, 'B'], [47, 3.5, 13, 'W']]) {
-          const w = base + amp * Math.sin((x + base) / len * Math.PI * 2)
-          if (Math.abs(y - w) < 1) return ch
-        }
-        return null
-      })
-      p.art(3, 0, art, { Y: YELLOW, C: CYAN, B: BLUE, W: WHITE })
-    },
+    draw(p, ms) { p.art(3, 0, Pic.seaPixels(ms), { Y: YELLOW, C: CYAN, B: BLUE, W: WHITE }) },
   },
   {
     title: 'CITY AT NIGHT',
-    draw(p) {
-      const art = pixels(80, 57, (x, y) => {
-        const bw = 6 + Math.floor(hash2(Math.floor(x / 7), 1) * 4)
-        const h = 18 + Math.floor(hash2(Math.floor(x / 7), 2) * 28)
-        if (y > 56 - h) {
-          if (x % 7 === 6) return null
-          const lit = (x % 2 === 0) && (y % 3 === 0) && hash2(x, y) > 0.45
-          return lit ? 'Y' : 'B'
-        }
-        if (hash2(x, y + 99) > 0.992) return 'W'
-        return null
-      })
-      p.art(3, 0, art, { Y: YELLOW, B: BLUE, W: WHITE })
-    },
+    draw(p, ms) { p.art(3, 0, Pic.cityPixels(ms), { Y: YELLOW, B: BLUE, W: WHITE }) },
   },
 ]
 
 page('700', 'Gallery', {
-  render() {
+  liveMs: 250,
+  subpageMs: 15000,
+  render(ctx) {
     return GALLERY.map((g, i) => {
       const p = new Page()
       masthead(p, '700', 'GALLERY', { sub: i, subs: GALLERY.length, right: 'PICTURES' })
-      g.draw(p)
+      g.draw(p, ctx.now)
       p.text(23, 1, `${g.title}, IN 2 BY 3 BLOCKS`, CYAN)
       p.fast([['INDEX', '100'], ['NEWS', '101'], ['WEATHER', '302'], ['BREATHE', '500']])
       return p

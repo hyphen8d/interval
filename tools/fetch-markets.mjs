@@ -46,11 +46,14 @@ export function parseFredCsv(text) {
   if (!rows.length) throw new Error('no values')
   const [date, value] = rows[rows.length - 1]
   const prev = rows.length > 1 ? rows[rows.length - 2] : null
-  return { date, value: +value, prevDate: prev?.[0] ?? null, prev: prev ? +prev[1] : null }
+  // The last ten closes, oldest first: page 401 draws them as a small bar
+  // chart, so a number has a shape beside it.
+  const history = rows.slice(-10).map(([, v]) => +v)
+  return { date, value: +value, prevDate: prev?.[0] ?? null, prev: prev ? +prev[1] : null, history }
 }
 
 export async function fetchMarkets(fetchImpl = fetch, now = new Date()) {
-  const from = new Date(now.getTime() - 21 * 864e5).toISOString().slice(0, 10)
+  const from = new Date(now.getTime() - 24 * 864e5).toISOString().slice(0, 10)
   const series = []
   const failed = []
   for (const s of SERIES) {

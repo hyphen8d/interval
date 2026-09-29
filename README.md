@@ -10,10 +10,10 @@ Six sections, every page readable at a glance:
 | | pages |
 | --- | --- |
 | **News** | 101 headlines, 102 did you know (tech, games, hacking) |
-| **Today** | 200 on this day, 201 born today |
+| **Today** | 200 on this day, 201 born today, 202 the clock |
 | **Weather** | 300 today, 301 five days (both for where you are), 302 twelve US cities |
 | **Money** | 401 world markets at the close, 410 the world in numbers |
-| **Pause** | 500 breathe, 501 a thought for today |
+| **Pause** | 500 breathe, 501 a thought for today, 502 the aquarium |
 | **Gallery** | 700 |
 
 Press **N** and the set turns its own pages, section by section. **H** keeps

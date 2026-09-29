@@ -137,7 +137,7 @@ test('markets and the World Bank: a close each, a value and year each', () => {
 test('FRED CSV: the last two real values, skipping holidays', async () => {
   const { parseFredCsv } = await import('../tools/fetch-markets.mjs')
   const r = parseFredCsv('observation_date,DJIA\n2026-09-24,100\n2026-09-25,101.5\n2026-09-28,.\n')
-  assert.deepEqual(r, { date: '2026-09-25', value: 101.5, prevDate: '2026-09-24', prev: 100 })
+  assert.deepEqual(r, { date: '2026-09-25', value: 101.5, prevDate: '2026-09-24', prev: 100, history: [100, 101.5] })
   assert.throws(() => parseFredCsv('observation_date,DJIA\n'))
 })
 

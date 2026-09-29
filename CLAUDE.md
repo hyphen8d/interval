@@ -66,7 +66,7 @@ imported bare throughout, as in SIGNAL.
 | `markup.js` | The `[y]colour [?]hidden[/?] [dh]` markup editorial pages are written in. |
 | `editorial.json` | Hand-written content: notice pages (190, the welcome, among them), the quiz, the four-keys game, and the thoughts for 501. The admin dashboard edits it. |
 | `program.js` | The set: power, keys, the carousel wait, reception, cycling, drawing a page onto the tube. |
-| `sky.js` | The moon, from the date. |
+| `pictures.js` | The moving pictures: the switch-on ident, the clock's digits, the candle, the aquarium, the living gallery, rain and snow. Pure functions of time. |
 | `pointer.js` | Touch: screen position to page cell through the CRT's curve, and tap/swipe classification. Pure. |
 | `constants.js` | `KEYS` (read by page 199, the tests and `index.html`'s summary) and the colour modes. |
 | `sfx.js`, `a11y.js` | The machine's own sounds; the screen-reader live region. |
@@ -119,6 +119,29 @@ rebuilt.
   STOPS") and the coloured keys are hidden. The weather pages that would only
   ask for a location are skipped until the set has one. There is no music;
   the SIGNAL-station soundtrack went with the overnight mode it came from.
+- **Switching on** (2026-09-28): a bright line that widens and opens (the
+  tube warming), then the INTERVAL ident assembling in block letters to a
+  three-note chime (`sfx.playChime`), about 2.4s (`BOOT_MS`). The ident stays
+  up under the searching header until the first page lands. Any key skips it;
+  a number keyed to wake the set skips it outright. A quiet start
+  (`?power=on`) has no ident and no sound. Sounds: a rubbery remote thunk on
+  every key, and a soft relay tick (`playPageTick`) when a page lands from a
+  search, not when a page merely comes round again.
+- **The wait is short** (`MAG_PERIOD_MS` 900: 0.3-1.2s). At 2.6s it read as
+  slow rather than charming. Keep the count visible; never make it a wait.
+- **Pages that move** declare `liveMs` and draw from `pictures.js`: breathe,
+  the clock (202, big seven-segment digits and six cities' times), the
+  candle under A thought (501), the aquarium (502), the gallery (the moon
+  rises, windows go on and off, the sea rolls), rain, snow and storms on the
+  weather pages, and ten-close bar charts on 401 (built by the workflow into
+  `markets.json` `history`). The rule: they move *slowly*. A candle drawn in
+  three colours broke into fragments, because a cell holds one; two work.
+  `cycleMs` overrides how long cycling stays on a page (breathe 32s,
+  aquarium 24s).
+- **Trimmed 2026-09-28:** the sky, space weather, earthquakes, currencies and
+  the quiz pages. The quiz content stays in `editorial.json`. On this day and
+  Born today are six screens each (`pickEvenly`). 302 is twelve US cities in
+  one Open-Meteo request, so the weather section cycles without a location.
 - **The set lands on 190, the welcome,** every time it's switched on (not the
   last page). `?page=` still opens where it points.
 - **Subpages count from arrival,** so a page always opens on its first screen.

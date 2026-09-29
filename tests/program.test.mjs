@@ -231,7 +231,7 @@ test('H while cycling holds the section; H again moves on', async () => {
   assert.ok(h.program.cycle.holdSection)
   const seen = new Set()
   for (let i = 0; i < 30; i++) { await h.settle(5000, 500); seen.add(h.program.page) }
-  assert.deepEqual([...seen].sort(), ['200', '201'], 'round TODAY and nowhere else')
+  assert.deepEqual([...seen].sort(), ['200', '201', '202'], 'round TODAY and nowhere else')
   assert.match(h.row(24), /HOLDING\s+TODAY\s+H MOVES ON/)
   h.key('h')
   for (let i = 0; i < 20 && Pages.sectionOf(h.program.page) === 1; i++) await h.settle(5000, 500)
@@ -308,3 +308,73 @@ test('switching off returns to standby and a deploy is picked up at the switch',
   h.shutdown()
 })
 
+
+test('switching on: a bright line, the ident with its chime, then the welcome', async () => {
+  const { BOOT_LINE_MS, BOOT_MS } = await import('../program.js')
+  const h = await boot({ power: false })
+  h.key('p')
+  h.advance(200)
+  assert.ok(h.term.colors.some(c => (c >> 4) === 7), 'a white line across the tube')
+  assert.equal(h.row(0), '', 'no header while the set is warming up')
+  h.advance(BOOT_LINE_MS + 900)
+  assert.ok(h.find('THE PAGES BETWEEN PICTURES'))
+  assert.ok(h.term.gfx.some(Boolean), 'the logo in block graphics')
+  await h.settle(BOOT_MS + 1500)
+  assert.equal(h.program.page, '190')
+  h.shutdown()
+})
+
+test('a key skips the ident; a number keyed to wake the set skips it outright', async () => {
+  const h = await boot({ power: false })
+  h.key('p'); h.advance(300)
+  h.key('i')
+  assert.equal(h.program.boot, null)
+  await h.settle(2000)
+  assert.equal(h.program.page, '100', 'I still went to the index')
+  h.shutdown()
+  const h2 = await boot({ power: false })
+  h2.key('3'); h2.key('0'); h2.key('2')
+  assert.equal(h2.program.boot, null)
+  await h2.settle(2000)
+  assert.equal(h2.program.page, '302')
+  h2.shutdown()
+})
+
+test('pages that move: the clock ticks, the candle flickers, the fish swim, the rain falls', async () => {
+  const Pic = await import('../pictures.js')
+  const differs = (f, a, b) => f(a).join('') !== f(b).join('')
+  assert.ok(differs(Pic.candlePixels, 0, 500))
+  assert.ok(differs(Pic.aquariumPixels, 0, 3000))
+  assert.ok(differs(Pic.moonrisePixels, 0, 20000))
+  assert.ok(differs(Pic.seaPixels, 0, 2000))
+  assert.notEqual(Pic.weatherCell('rain', 0), Pic.weatherCell('rain', 250))
+  assert.equal(Pic.weatherKind(63), 'rain'); assert.equal(Pic.weatherKind(73), 'snow'); assert.equal(Pic.weatherKind(2), null)
+  const h = await boot()
+  await h.go('202', 3000)
+  const before = h.text()
+  h.advance(1100)
+  assert.notEqual(h.text(), before, 'the clock moved on a second')
+  assert.match(h.page(), /TOKYO\s+\d\d:\d\d/)
+  h.shutdown()
+})
+
+test('the clock digits are the time', async () => {
+  const { clockPixels } = await import('../pictures.js')
+  const px = clockPixels('18:08:00')
+  assert.equal(px.length, 15)
+  assert.equal(px[0].length, 6 * 8 + 2 * 4)
+  // The 1 has only its right-hand segments lit.
+  assert.ok(px.every(row => row.slice(0, 4) === '....'))
+})
+
+test('the arrival tick only for a page keyed, and the chime only at switch-on', async () => {
+  // power: false -- the set switches itself on from ?power=on; the harness
+  // pressing P as well would switch it straight back off.
+  const h = await boot({ query: '?power=on', power: false })
+  await h.settle(2000)
+  assert.equal(h.program.quiet, true, 'a start nobody pressed makes no sound')
+  assert.equal(h.program.page, '190', 'and goes straight to its page, no ident')
+  h.key('1'); h.key('0'); h.key('1')
+  assert.equal(h.program.quiet, false)
+  h.shutdown()
+})

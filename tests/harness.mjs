@@ -197,6 +197,8 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
     },
   }
   program.init(s)
-  if (power) { h.key('p'); await h.settle(3500) }
+  // Switching on runs the ident (program.js BOOT_MS) before the page is
+  // asked for; 4.5s covers that and the page's wait.
+  if (power) { h.key('p'); await h.settle(4500) }
   return h
 }

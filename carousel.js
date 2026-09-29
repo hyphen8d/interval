@@ -18,8 +18,10 @@
 /** One pass of a magazine. Real services ran 20-30s for a full magazine; a
  *  web toy that made you wait that long would be sat in front of by nobody,
  *  so this keeps the SHAPE (a wait that depends on the loop) at a length a
- *  person will stay for: 0-2.6s, 1.3s on average. */
-export const MAG_PERIOD_MS = 2600
+ *  person will stay for. 2026-09-28: 2.6s read as slow rather than charming
+ *  once the novelty went; 0.9s keeps the count visible and never a wait --
+ *  0.3 to 1.2s from the key to the page. */
+export const MAG_PERIOD_MS = 900
 
 /** A page is never grabbed sooner than this after the key, even if its slot
  *  is passing right now: the header has to be seen to roll, or the page

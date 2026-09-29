@@ -22,6 +22,7 @@ const { announce } = await import(`./a11y.js?v=${V}`)
 const { SCREEN, PALETTE } = await import(`./config.js?v=${V}`)
 const { NORMAL, DIM } = await import(`./src/cellgrid.js`)
 const { cellAt } = await import(`./pointer.js?v=${V}`)
+const Pic = await import(`./pictures.js?v=${V}`)
 const editorial = (await import(`./editorial.json?v=${V}`, { with: { type: 'json' } })).default
 
 export const STORAGE_KEY = 'interval:state:v1'
@@ -34,8 +35,16 @@ export const FEED_POLL_MS = 30000
  *  subpages, within these bounds. A page of eight facts shows three. */
 export const CYCLE_MIN_MS = 12000
 export const CYCLE_MAX_MS = 36000
-/** The breathing page, once round the box and once more. */
-export const CYCLE_LIVE_MS = 32000
+/**
+ * Switching on (2026-09-28): the tube warms from a bright line, then the
+ * INTERVAL ident assembles to a three-note chime, then the set goes to its
+ * page. It was a fade to the welcome page, and nothing happened that anyone
+ * would remember. Any key skips it; a number keyed to wake the set skips it
+ * outright, since that viewer knows where they are going.
+ */
+export const BOOT_LINE_MS = 550
+export const BOOT_IDENT_MS = 1850
+export const BOOT_MS = BOOT_LINE_MS + BOOT_IDENT_MS
 /** How often an open tab asks whether a new build has been deployed. */
 export const BUILD_CHECK_MS = 30 * 60 * 1000
 
@@ -82,6 +91,9 @@ const program = {
     this.cycle = { on: false, section: 0, index: 0, next: Infinity, holdSection: false }
     this.subEpoch = 0
     this.nextLive = Infinity
+    this.boot = null
+    this.identHold = false
+    this.quiet = false
     this.pendingReload = false
 
     const saved = loadState()
@@ -164,6 +176,7 @@ const program = {
   powerUp({ quiet = false } = {}) {
     if (this.power) return
     this.power = true
+    this.quiet = quiet
     this.lastKeyAt = perf()
     if (!quiet) { sfx.playPowerOn(); sfx.startHum() }
     const p = this.s.crt.params
@@ -172,15 +185,29 @@ const program = {
     this.fxTween(p, 'brightness', 0.05, this.crtBase.brightness, 1100)
     this.fxTween(p, 'bloomAmt', this.crtBase.bloomAmt * 2.4, this.crtBase.bloomAmt, 1400)
     this.s.term.clear()
-    this.request(this.startPage || '190')
+    // A quiet start (?power=on: the dashboard's preview, a shared link) goes
+    // straight to its page; a switch-on the viewer pressed gets the ident.
+    if (quiet) this.request(this.startPage || '190')
+    else this.boot = { t0: perf(), chimed: false }
     this.nextFeedPoll = 0
     if (this.weatherConsent === 'yes' && this.locationState === 'unknown') this.requestLocation()
     announce('INTERVAL switched on.', 'power')
   },
 
+  /** End the switch-on sequence and go to the page. */
+  skipBoot() {
+    if (!this.boot) return
+    this.boot = null
+    // The ident stays up under the searching header until the first page
+    // lands, rather than the tube going blank for the wait between them.
+    this.identHold = true
+    if (!this.want && !this.page) this.request(this.startPage || '190')
+  },
+
   powerDown() {
     if (!this.power) return
     this.power = false
+    this.boot = null
     sfx.playPowerOff()
     sfx.stopHum()
     this.stopCycle()
@@ -277,7 +304,9 @@ const program = {
     }
     this.page = this.want
     this.want = null
+    this.identHold = false
     this.pages = pages
+    if (!this.quiet) sfx.playPageTick()
     this.subMs = def.subpageMs ?? C.SUBPAGE_MS
     // Subpages count from the page's arrival, so a page always opens on its
     // first screen (2026-09-28). The broadcaster's own clock, which the first
@@ -414,7 +443,7 @@ const program = {
   // own until asked (2026-09-28).
 
   cycleDwell(def, subs) {
-    if (def?.liveMs && def.num === '500') return CYCLE_LIVE_MS
+    if (def?.cycleMs) return def.cycleMs
     return Math.min(CYCLE_MAX_MS, Math.max(CYCLE_MIN_MS, subs * (def?.subpageMs ?? C.SUBPAGE_MS)))
   },
 
@@ -612,10 +641,14 @@ const program = {
         sfx.playKeyClick()
         e.preventDefault?.()
         this.powerUp()
-        if (/^[1-8]$/.test(k)) { this.want = null; this.entry = k }
+        if (/^[1-8]$/.test(k)) { this.skipBoot(); this.want = null; this.entry = k }
       }
       return
     }
+    // Any key during the switch-on skips the rest of it -- and then does
+    // what it does, except P, which switches off.
+    this.quiet = false
+    if (this.boot && lower !== 'p') this.skipBoot()
 
     const handled = this.handleKey(k, lower, e)
     if (handled) {
@@ -725,6 +758,12 @@ const program = {
   tick(now) {
     this.fxTick(now)
     if (!this.power) return
+    if (this.boot) {
+      const t = now - this.boot.t0
+      if (!this.boot.chimed && t >= BOOT_LINE_MS) { this.boot.chimed = true; sfx.playChime() }
+      if (t >= BOOT_MS) this.skipBoot()
+      return
+    }
     this.updateReception(now)
     this.applyReceptionToTube()
     if (now >= this.nextFeedPoll) {
@@ -773,9 +812,11 @@ const program = {
 
   draw(now) {
     const term = this.s.term
+    if (this.boot) { this.drawBoot(now - this.boot.t0); return }
     const hdr = this.header(now)
     for (let x = 0; x < T.COLS; x++) this.putCell(0, x, hdr[x], hdr[x], null)
     if (!this.truth) {
+      if (this.identHold) { this.drawBoot(BOOT_MS, 1); return }
       for (let y = 1; y < T.ROWS; y++) for (let x = 0; x < T.COLS; x++) term.put(x, y, ' ', NORMAL, 0, T.cellColour(T.WHITE, T.BLACK))
       return
     }
@@ -806,6 +847,32 @@ const program = {
     if (bm && half) bm = T.doubleBitmap(bm, half)
     if (bm) term.putGlyph(x, y, bm, NORMAL, 0, col)
     else term.put(x, y, ' ', NORMAL, 0, col)
+  },
+
+  /** The switch-on: a bright line that widens and opens into a white field,
+   *  then the ident on black -- the logo assembling, the colour bars, the
+   *  line under it. Drawn straight onto the grid; no header yet, the set is
+   *  not receiving anything. */
+  drawBoot(t, fromRow = 0) {
+    const P = new T.Page()
+    if (t < BOOT_LINE_MS) {
+      const k = t / BOOT_LINE_MS
+      const w = Math.min(T.COLS, Math.round(k * 1.6 * T.COLS))
+      const c0 = Math.floor((T.COLS - w) / 2)
+      const h = k > 0.7 ? Math.round((k - 0.7) / 0.3 * 12) : 0
+      for (let r = 12 - h; r <= 12 + h; r++) P.band(r, T.WHITE, c0, c0 + w)
+    } else {
+      const k = Math.min(1, (t - BOOT_LINE_MS) / (BOOT_IDENT_MS * 0.6))
+      P.art(7, 8, Pic.identPixels('INTERVAL', k), { R: T.RED, Y: T.YELLOW, G: T.GREEN, C: T.CYAN, M: T.MAGENTA })
+      const bars = [T.WHITE, T.YELLOW, T.CYAN, T.GREEN, T.MAGENTA, T.RED, T.BLUE, T.WHITE]
+      const shown = Math.floor(Math.min(1, k * 1.4) * bars.length)
+      for (let i = 0; i < shown; i++) P.band(16, bars[i], 8 + i * 3, 11 + i * 3)
+      if (k > 0.6) P.text(14, 7, 'THE PAGES BETWEEN PICTURES', T.WHITE)
+    }
+    for (let y = fromRow; y < T.ROWS; y++) {
+      const row = P.cells[y]
+      for (let x = 0; x < T.COLS; x++) this.putCell(y, x, row[x], row[x], null)
+    }
   },
 
   /** Row 24 while cycling: where the set is and the two keys that matter.
