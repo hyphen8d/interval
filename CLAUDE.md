@@ -61,7 +61,7 @@ imported bare throughout, as in SIGNAL.
 | --- | --- |
 | `teletext.js` | The page model. `Page` (40x25 cells: char or mosaic, fg/bg of 8 colours, double height, conceal, flash, separated), text folding and wrapping, the palettes, and the bitmaps the engine draws mosaics and double height with. Pure. |
 | `carousel.js` | When a page arrives (`nextTransmission`: a fixed slot in a fixed loop per magazine, so the wait depends on where the loop is) and what reception does to it (`receive`). Pure. |
-| `feeds.js` | Every source's URL, parser and refresh period, and `FeedCache` (dated keys, stale-after, backoff, warm start from localStorage except weather). Pure apart from `fetch`. |
+| `feeds.js` | Every source's URL, parser and refresh period, and `FeedCache` (dated keys, stale-after, backoff, warm start from localStorage except weather; a copy saved by another build is shown but refetched at once, since an old parser made it). Pure apart from `fetch`. |
 | `pages.js` | The page map: every page, its magazine, its sources, and `render(ctx) -> Page[]` (one per subpage). This is the equivalent of SIGNAL's `stations.js`. |
 | `markup.js` | The `[y]colour [?]hidden[/?] [dh]` markup editorial pages are written in. |
 | `editorial.json` | Hand-written content: notice pages (190, the welcome, among them), the quiz, the four-keys game, and the thoughts for 501. The admin dashboard edits it. |

@@ -452,8 +452,10 @@ export class FeedCache {
    * @param {object}   o.env         { date(), location, units, signalUrl, importModule }
    * @param {object}   [o.storage]   localStorage-shaped, for a warm start
    * @param {Function} [o.onChange]  called with the feed id whenever an entry changes
+   * @param {string}   [o.build]     the running build, stamped on each saved copy
    */
-  constructor({ fetch, now, env, storage = null, onChange = () => {}, feeds = FEEDS }) {
+  constructor({ fetch, now, env, storage = null, onChange = () => {}, feeds = FEEDS, build = globalThis.INTERVAL_BUILD ?? '' }) {
+    this.build = String(build)
     this.fetch = fetch
     this.now = now
     this.env = env
@@ -466,20 +468,28 @@ export class FeedCache {
 
   _storageKey(id) { return `interval:feed:${id}` }
 
+  /**
+   * A saved copy is what an earlier visit's PARSER made of the source, so a
+   * copy saved by another build is shown (a warm start beats a blank page)
+   * but fetched again at once (`reparse`), not left until its refresh period
+   * runs out. 2026-09-28: parseMarkets was fixed to keep 402's `household`,
+   * and a browser holding a copy parsed by the old build kept 402 empty for
+   * up to an hour after the fix was live.
+   */
   _restore(id) {
-    const blank = { key: null, data: null, at: 0, error: null, loading: false, failures: 0, retryAt: 0 }
+    const blank = { key: null, data: null, at: 0, error: null, loading: false, failures: 0, retryAt: 0, reparse: false }
     if (!this.storage || this.feeds[id].persist === false) return blank
     try {
       const raw = this.storage.getItem(this._storageKey(id))
       if (!raw) return blank
       const saved = JSON.parse(raw)
-      return { ...blank, key: saved.key ?? null, data: saved.data ?? null, at: saved.at || 0 }
+      return { ...blank, key: saved.key ?? null, data: saved.data ?? null, at: saved.at || 0, reparse: String(saved.build ?? '') !== this.build }
     } catch (e) { return blank }
   }
 
   _persist(id, e) {
     if (!this.storage || this.feeds[id].persist === false) return
-    try { this.storage.setItem(this._storageKey(id), JSON.stringify({ key: e.key, data: e.data, at: e.at })) } catch (err) { /* quota, private mode */ }
+    try { this.storage.setItem(this._storageKey(id), JSON.stringify({ key: e.key, data: e.data, at: e.at, build: this.build })) } catch (err) { /* quota, private mode */ }
   }
 
   keyFor(id) {
@@ -518,12 +528,12 @@ export class FeedCache {
     const now = this.now()
     const current = e.data && e.key === key
     const every = f.liveRefreshMs && f.isLive?.(e.data) ? f.liveRefreshMs : f.refreshMs
-    if (!force && current && now - e.at < every) return Promise.resolve()
+    if (!force && current && !e.reparse && now - e.at < every) return Promise.resolve()
     if (!force && e.retryAt > now) return Promise.resolve()
     const p = (async () => {
       try {
         const data = await f.load(this.fetch, this.env)
-        Object.assign(e, { key, data, at: this.now(), error: null, failures: 0, retryAt: 0 })
+        Object.assign(e, { key, data, at: this.now(), error: null, failures: 0, retryAt: 0, reparse: false })
         this._persist(id, e)
       } catch (err) {
         e.failures++

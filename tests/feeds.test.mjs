@@ -190,3 +190,21 @@ test('household money: inflation is a twelve-month change worked out from the in
   const m = fx('markets.json')
   assert.deepEqual(m.household.map(s => s.id), ['GASREGW', 'MORTGAGE30US', 'CPIAUCSL', 'DFF', 'UNRATE'])
 })
+
+test('a copy saved by another build is shown, and fetched again at once', async () => {
+  const { FeedCache } = await import('../feeds.js')
+  const store = new Map()
+  const storage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) }
+  const feeds = { m: { refreshMs: 60 * 60000, load: async () => ({ v: 'new' }) } }
+  let now = 1000
+  store.set('interval:feed:m', JSON.stringify({ key: 'live', data: { v: 'old' }, at: 900, build: 'A' }))
+  const a = new FeedCache({ fetch: null, now: () => now, env: {}, storage, feeds, build: 'B' })
+  assert.deepEqual(a.get('m').data, { v: 'old' }, 'the old copy warms the start')
+  await a.ensure('m')
+  assert.deepEqual(a.get('m').data, { v: 'new' }, 'and is replaced at once, not in an hour')
+  let loads = 0
+  feeds.m.load = async () => { loads++; return { v: 'newer' } }
+  const b = new FeedCache({ fetch: null, now: () => now, env: {}, storage, feeds, build: 'B' })
+  await b.ensure('m')
+  assert.equal(loads, 0, 'a copy this build saved waits out its refresh as before')
+})
