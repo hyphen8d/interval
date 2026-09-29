@@ -169,7 +169,7 @@ test('facts, born today and a thought: one bite a screen', async () => {
   assert.ok(editorial.thoughts.some(t => thought.includes(t.text.slice(0, 20))))
 })
 
-test('money: the markets at the close, the world in numbers', async () => {
+test('money: the markets at the close', async () => {
   const ctx = ctxWith()
   const mk = pageDef('401', ctx).render(ctx)[0].lines().join('\n')
   assert.match(mk, /DOW JONES\s+51,481\.51 ▼ 0\.67%/)
@@ -177,10 +177,6 @@ test('money: the markets at the close, the world in numbers', async () => {
   assert.match(mk, /US 10-YEAR YIELD\s+5\.17%/)
   const stale = { ...ctx, now: Date.parse(DATA.markets.at) + 5 * 864e5 }
   assert.match(pageDef('401', stale).render(stale)[0].lines().join(' '), /PRICES NOT REFRESHED SINCE/)
-  const { worldPopulationNow } = await import('../pages.js')
-  const a = worldPopulationNow(DATA.world, NOW), b = worldPopulationNow(DATA.world, NOW + 60000)
-  assert.ok(a > 8.2e9 && a < 8.4e9)
-  assert.ok(b > a, 'the count moves')
 })
 
 test('breathe: in four, hold four, out four, hold four -- and the circle follows the breath', async () => {

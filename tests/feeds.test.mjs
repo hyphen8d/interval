@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   parseITN, parseOnThisDay, parseForecast, parseMarkets, parseCities,
-  parseWorldBank, decodeEntities, FeedCache, backoffMs, staleAfter, FEEDS, forecastUrl,
+  decodeEntities, FeedCache, backoffMs, staleAfter, FEEDS, forecastUrl,
 } from '../feeds.js'
 
 const fx = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'))
@@ -123,15 +123,11 @@ test('Current events: the innermost items only, sources dropped, filed by sectio
   assert.equal(parseCurrentEvents(all['2026_September_27']).length, 18)
 })
 
-test('markets and the World Bank: a close each, a value and year each', () => {
+test('markets: a close each', () => {
   const m = parseMarkets(fx('markets.json'))
   assert.equal(m.series[0].name, 'DOW JONES')
   assert.ok(m.series.every(s => Number.isFinite(s.value) && /^\d{4}-\d\d-\d\d$/.test(s.date)))
   assert.throws(() => parseMarkets({ series: [] }))
-  const w = parseWorldBank(fx('worldbank-world.json'))
-  assert.equal(w['SP.POP.TOTL'].year, 2025)
-  assert.ok(w['FP.CPI.TOTL.ZG'].value > 0)
-  assert.throws(() => parseWorldBank([{}, []]))
 })
 
 test('FRED CSV: the last two real values, skipping holidays', async () => {

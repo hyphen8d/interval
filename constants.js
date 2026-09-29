@@ -10,9 +10,7 @@ export const KEYS = [
   { id: 'leftright', keys: 'LEFT/RIGHT', label: 'STEP THROUGH SUBPAGES' },
   { id: 'fastext', keys: 'F1-F4', label: 'THE FOUR COLOURED LINKS' },
   { id: 'index', keys: 'I', label: 'INDEX, PAGE 100' },
-  { id: 'reveal', keys: 'R', label: 'REVEAL HIDDEN ANSWERS' },
   { id: 'hold', keys: 'H', label: 'HOLD THE PAGE OR SECTION' },
-  { id: 'size', keys: 'S', label: 'SIZE: TOP, BOTTOM, NORMAL' },
   { id: 'colour', keys: 'C', label: 'COLOUR / B&W / MONITOR' },
   { id: 'cycle', keys: 'N', label: 'CYCLE THROUGH THE SECTIONS' },
   { id: 'fullscreen', keys: 'F', label: 'FULL SCREEN' },
@@ -20,8 +18,9 @@ export const KEYS = [
   { id: 'power', keys: 'P', label: 'SWITCH THE SET ON OR OFF' },
 ]
 
-/** Laptop keyboards often need a modifier for F1-F4; Shift+1..4 does the
- *  same. Listed here so the help page and the handler agree. */
+/** For keyboards where F1-F4 need a modifier (Macs and most laptops, where
+ *  the top row is media keys unless fn is held): Shift+1..4 does the same.
+ *  Listed here so the help page and the handler agree. */
 export const FASTEXT_ALT = 'SHIFT+1-4'
 
 /** Header messages: what the service-name slot says, briefly, when a

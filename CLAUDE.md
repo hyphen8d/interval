@@ -147,7 +147,7 @@ rebuilt.
 - **Subpages count from arrival,** so a page always opens on its first screen.
   The first version followed the broadcaster's clock and opened a twelve-fact
   page at fact seven.
-- **Moving pages** (`liveMs`: 500 breathe, 410's population count) are
+- **Moving pages** (`liveMs`: breathe, the clock, the candle and others) are
   re-drawn in place between transmissions, without a reception pass.
 - **Keyboard on a desktop, touch on a phone. No mouse** (2026-09-28). The
   fastext row wasn't read as something to press, so the keys are drawn as

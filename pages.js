@@ -78,7 +78,7 @@ export const SECTIONS = [
   { name: 'NEWS', pages: [['HEADLINES', '101'], ['FACTS', '102']] },
   { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201'], ['CLOCK', '202']] },
   { name: 'WEATHER', pages: [['TODAY', '300'], ['5-DAY', '301'], ['US CITIES', '302']] },
-  { name: 'MONEY', pages: [['MARKETS', '401'], ['THE WORLD', '410']] },
+  { name: 'MONEY', pages: [['MARKETS', '401']] },
   { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501'], ['AQUARIUM', '502']] },
   { name: 'GALLERY', pages: [['PICTURES', '700']] },
 ]
@@ -756,49 +756,7 @@ page('401', 'World markets', {
       if (age > 3 * 864e5) p.text(21, 1, clip(`PRICES NOT REFRESHED SINCE ${shortDay(markets.at.slice(0, 10))}`, 38), RED)
       else p.text(21, 1, 'DAILY CLOSES, UPDATED EACH WEEKDAY', GREEN)
       creditLine(p, ctx, 'markets')
-      p.fast([['WORLD', '410'], ['WEATHER', '302'], ['NEWS', '101'], ['INDEX', '100']])
-      return [p]
-    })
-  },
-})
-
-/**
- * The world in numbers. The population is the World Bank's latest mid-year
- * figure grown at its latest growth rate to this second -- an estimate,
- * ticking, which is what the page says it is. liveMs keeps it moving.
- */
-export function worldPopulationNow(world, nowMs) {
-  const pop = world['SP.POP.TOTL'], grow = world['SP.POP.GROW']
-  if (!pop) return null
-  const midYear = Date.UTC(pop.year, 6, 1)
-  const years = (nowMs - midYear) / (365.2425 * 864e5)
-  const rate = (grow?.value ?? 0.9) / 100
-  return Math.round(pop.value * Math.pow(1 + rate, years))
-}
-page('410', 'The world in numbers', {
-  feeds: ['world'],
-  liveMs: 1000,
-  render(ctx) {
-    return gate(ctx, '410', 'THE WORLD', ['world'], ({ world }) => {
-      const p = new Page()
-      masthead(p, '410', 'THE WORLD', { right: 'IN NUMBERS' })
-      const pop = worldPopulationNow(world, ctx.now)
-      p.text(BODY_TOP, 1, 'PEOPLE ALIVE NOW (ESTIMATE)', CYAN)
-      if (pop) p.double(BODY_TOP + 1, 1, pop.toLocaleString('en-US'), YELLOW)
-      const line = (r, label, id, fmt) => {
-        const x = world[id]
-        if (!x) return
-        p.text(r, 1, label, WHITE)
-        p.text(r, 26, fmt(x.value).padStart(7), YELLOW)
-        p.text(r, 34, String(x.year), CYAN)
-      }
-      line(BODY_TOP + 5, 'ECONOMIC GROWTH', 'NY.GDP.MKTP.KD.ZG', v => `${v.toFixed(1)}%`)
-      line(BODY_TOP + 7, 'INFLATION', 'FP.CPI.TOTL.ZG', v => `${v.toFixed(1)}%`)
-      line(BODY_TOP + 9, 'UNEMPLOYMENT', 'SL.UEM.TOTL.ZS', v => `${v.toFixed(1)}%`)
-      line(BODY_TOP + 11, 'POPULATION GROWTH', 'SP.POP.GROW', v => `${v.toFixed(2)}%`)
-      p.text(BODY_TOP + 13, 1, 'WHOLE WORLD, LATEST YEAR REPORTED', GREEN)
-      creditLine(p, ctx, 'world')
-      p.fast([['MARKETS', '401'], ['WEATHER', '302'], ['NEWS', '101'], ['INDEX', '100']])
+      p.fast([['WEATHER', '302'], ['NEWS', '101'], ['CLOCK', '202'], ['INDEX', '100']])
       return [p]
     })
   },

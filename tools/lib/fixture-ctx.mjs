@@ -26,7 +26,6 @@ export async function fixtureData() {
     weather: F.parseForecast(fx('open-meteo.json')),
     cities: F.parseCities(fx('open-meteo-cities.json')),
     markets: F.parseMarkets(fx('markets.json')),
-    world: F.parseWorldBank(fx('worldbank-world.json')),
     events: fixtureEvents(F),
   }
 }

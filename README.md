@@ -12,7 +12,7 @@ Six sections, every page readable at a glance:
 | **News** | 101 headlines, 102 did you know (tech, games, hacking) |
 | **Today** | 200 on this day, 201 born today, 202 the clock |
 | **Weather** | 300 today, 301 five days (both for where you are), 302 twelve US cities |
-| **Money** | 401 world markets at the close, 410 the world in numbers |
+| **Money** | 401 world markets at the close |
 | **Pause** | 500 breathe, 501 a thought for today, 502 the aquarium |
 | **Gallery** | 700 |
 
@@ -34,10 +34,8 @@ welcome page. Then:
 | H | hold the page, or while cycling, the section |
 | up / down | next or previous page |
 | left / right | step through a page's subpages |
-| F1-F4, or Shift+1-4 | the red, green, yellow and cyan links on the bottom row |
+| F1-F4, or Shift+1-4 | the red, green, yellow and cyan links on the bottom row (Shift+1-4 is for keyboards whose F-keys need fn) |
 | I | the index |
-| R | reveal hidden answers |
-| S | size: the top half, the bottom half, normal |
 | C | colour, a black-and-white set, or a green monitor |
 | F | full screen |
 | Esc | clear a half-keyed number |

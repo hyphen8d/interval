@@ -244,19 +244,6 @@ export function parseCities(json) {
   }
 }
 
-/** The World Bank's world figures, one value (the latest there is) each. */
-export function parseWorldBank(json) {
-  const rows = Array.isArray(json) ? json[1] : null
-  if (!Array.isArray(rows) || !rows.length) throw new Error('no World Bank rows')
-  const out = {}
-  for (const r of rows) {
-    if (r?.value == null) continue
-    out[r.indicator?.id] = { value: r.value, year: Number(r.date) }
-  }
-  if (!Object.keys(out).length) throw new Error('every World Bank value was empty')
-  return out
-}
-
 // ---------------------------------------------------------------------------
 // Sources
 // ---------------------------------------------------------------------------
@@ -275,9 +262,6 @@ export const ITN_URL = 'https://en.wikipedia.org/w/api.php?action=parse&page=Tem
  *  address, since what it checks is that the workflow is producing it. */
 export const MARKETS_URL = 'markets.json'
 export const MARKETS_LIVE_URL = 'https://hyphen8d.github.io/interval/markets.json'
-/** World Bank indicator codes, world aggregate, one request. */
-export const WB_INDICATORS = ['NY.GDP.MKTP.KD.ZG', 'FP.CPI.TOTL.ZG', 'SP.POP.TOTL', 'SP.POP.GROW', 'SL.UEM.TOTL.ZS']
-export const WB_URL = `https://api.worldbank.org/v2/country/WLD/indicator/${WB_INDICATORS.join(';')}?format=json&source=2&mrnev=1&per_page=20`
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 /** The portal is dated in UTC: that is when Wikipedia's day turns over. */
 export const currentEventsTitle = (d) => `${d.getUTCFullYear()}_${MONTHS[d.getUTCMonth()]}_${d.getUTCDate()}`
@@ -357,11 +341,6 @@ export const FEEDS = {
     label: 'FRED', title: 'FRED: market closes (built by the deploy workflow)', refreshMs: 60 * MIN,
     url: (env) => env.marketsUrl || MARKETS_URL,
     load: async (f, env) => parseMarkets(await getJSON(f, env.marketsUrl || MARKETS_URL)),
-  },
-  world: {
-    label: 'WORLD BANK', title: 'World Bank: world growth, inflation, population', refreshMs: 24 * 60 * MIN,
-    url: () => WB_URL,
-    load: async (f) => parseWorldBank(await getJSON(f, WB_URL)),
   },
 }
 

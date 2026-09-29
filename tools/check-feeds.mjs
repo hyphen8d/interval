@@ -51,7 +51,6 @@ export function summarise(id, data) {
       const age = (Date.now() - Date.parse(data.at)) / 3600e3
       return { items: data.series.length, detail: `${data.series.length} series, built ${Math.round(age)}h ago`, staleHours: Math.round(age) > 96 ? Math.round(age) : 0 }
     }
-    case 'world': return { items: Object.keys(data).length, detail: `${Object.keys(data).length} world figures` }
     default: return { items: null, detail: '' }
   }
 }

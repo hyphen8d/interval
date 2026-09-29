@@ -15,7 +15,6 @@ unused fields dropped) and otherwise untouched.
 | open-meteo-cities.json | api.open-meteo.com forecast, twelve US cities in one request |
 | open-meteo.json | api.open-meteo.com forecast, 5 days, New York |
 | markets.json | tools/fetch-markets.mjs's own output: FRED daily closes, eight series |
-| worldbank-world.json | api.worldbank.org, five world indicators, most recent value each |
 
 Refresh them with `node tools/capture-fixtures.mjs` when a source changes
 shape -- and then read the diff, because a changed shape is the finding.

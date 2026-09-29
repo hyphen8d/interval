@@ -47,7 +47,6 @@ const steps = [
   ['open-meteo-cities.json', async () => get(F.citiesUrl('F'))],
   ['open-meteo.json', async () => get(F.forecastUrl(40.7, -74.0, 'F'))],
   ['markets.json', async () => (await import('./fetch-markets.mjs')).fetchMarkets()],
-  ['worldbank-world.json', async () => get(F.WB_URL)],
 ]
 
 let failed = 0

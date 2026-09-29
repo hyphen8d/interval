@@ -30,7 +30,6 @@ export function fixtureFetch(url) {
   const u = String(url)
   if (u.includes('Template:In_the_news')) return fixture('wiki-itn.json')
   if (u === 'markets.json' || u.endsWith('/markets.json')) return fixture('markets.json')
-  if (u.includes('api.worldbank.org')) return fixture('worldbank-world.json')
   // Keyed by the portal's own title; a day not captured is a 404, which is
   // how the harness's own boot time (00:00 UTC on the 29th) exercises the
   // fall-back to yesterday.

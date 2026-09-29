@@ -683,11 +683,6 @@ const program = {
     switch (lower) {
       case 'i': pageKey(); this.entry = ''; this.request('100'); return true
       case '?': pageKey(); this.request('199'); return true
-      case 'r':
-        this.reveal = !this.reveal
-        this.flash(this.reveal ? 'REVEAL' : 'CONCEAL')
-        if (this.reveal && this.truth) announce(this.truth.speech({ reveal: true }), 'reveal')
-        return true
       case 'h':
         // Cycling: hold the SECTION, going round its pages. Otherwise hold
         // the page that is up, as a teletext set's HOLD did.
@@ -699,10 +694,6 @@ const program = {
         }
         this.hold = !this.hold
         this.flash(this.hold ? 'HOLD' : 'RELEASE')
-        return true
-      case 's':
-        this.size = (this.size + 1) % 3
-        this.flash(['SIZE', 'SIZE TOP', 'SIZE BOT'][this.size])
         return true
       case 'c':
         this.colourMode = (this.colourMode + 1) % COLOUR_MODES.length
@@ -784,10 +775,20 @@ const program = {
   },
 
   // ---------------------------------------------------------------- drawing
+  /**
+   * Row 0 (2026-09-28, second pass): one page number, the plate, the date,
+   * the time. Real teletext showed two numbers -- the page you keyed, and the
+   * page going past -- and here that read as a mistake ("P200 ... 200"). Now
+   * the one number is what you keyed while you key it, counts in green
+   * while the set waits for it, and settles white on the page. The date is
+   * US order and the seconds take a colon: Ceefax's "20:15/03" was
+   * authentic and read as a typo.
+   */
   header(now) {
     const H = new T.Page()
-    const shown = this.entry ? this.entry.padEnd(3, '-') : (this.want || this.page || '---')
-    H.text(0, 1, `P${shown}`, T.WHITE)
+    if (this.entry) H.text(0, 1, `P${this.entry.padEnd(3, '-')}`, T.WHITE)
+    else if (this.want) H.text(0, 1, `P${C.rollingNumber(this.want[0], now)}`, T.GREEN)
+    else H.text(0, 1, `P${this.page || '---'}`, T.WHITE)
     // The service name on its own plate, yellow on blue (2026-09-28: it read
     // as one more word in a white line of numbers). Messages -- HOLD, SIZE,
     // CYCLING -- take the plate over briefly, in the same place.
@@ -796,12 +797,10 @@ const program = {
     if (msg) H.text(0, 6, msg.slice(0, 8), T.WHITE, T.BLUE)
     else if (this.hold) H.text(0, 6, 'HOLD', T.RED, T.BLUE)
     else H.text(0, 6, 'INTERVAL', T.YELLOW, T.BLUE)
-    if (this.want) H.text(0, 16, C.rollingNumber(this.want[0], now), T.GREEN)
-    else if (this.page) H.text(0, 16, this.page, T.WHITE)
     const d = new Date()
-    const date = `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${pad2(d.getDate())} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]}`
-    H.text(0, 20, date, T.WHITE)
-    H.text(0, 31, `${pad2(d.getHours())}:${pad2(d.getMinutes())}/${pad2(d.getSeconds())}`, T.YELLOW)
+    const date = `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]} ${d.getDate()}`
+    H.text(0, 18, date, T.WHITE)
+    H.text(0, 31, `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`, T.YELLOW)
     return H.cells[0]
   },
 
