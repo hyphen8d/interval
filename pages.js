@@ -253,13 +253,6 @@ page('100', 'Index', {
   },
 })
 
-/** The first sentence of a news item, which is what a teletext brief is.
- *  The portal's items run to ten lines; a headline page wants two to four. */
-export function brief(text, max = 170) {
-  const first = String(text).match(/^.+?[.!?](?=\s+[A-Z0-9"']|$)/)?.[0] ?? String(text)
-  return first.length <= max ? first : `${clip(first, max - 3)}...`
-}
-
 /** Capitalised words, for spotting the same story told twice. */
 const namesIn = (t) => new Set((t.match(/\b[A-Z][a-z]{3,}\b/g) || []).filter(w => !['The', 'This', 'That', 'After', 'During', 'Former'].includes(w)))
 export function sameStory(a, b) {
@@ -269,65 +262,187 @@ export function sameStory(a, b) {
   return shared >= 2
 }
 
-/**
- * Fill exactly `pages` subpages from `blocks`, in order, skipping any block
- * that does not fit what is left of a page for a later one that does -- so
- * each page ends full rather than with a gap, or with one story on its own. Blocks that do not make it
- * are dropped: there is more news than two screens, and that is the point
- * of a headline page.
- */
-export function fillPages(blocks, pages, { top = BODY_TOP, bottom = BODY_BOTTOM, gap = 1 } = {}) {
-  const out = []
-  const left = blocks.slice()
-  for (let pg = 0; pg < pages && left.length; pg++) {
-    const placed = []
-    let row = top
-    for (let k = 0; k < left.length;) {
-      const b = left[k]
-      if (row + b.height - 1 <= bottom) { placed.push({ block: b, row }); row += b.height + gap; left.splice(k, 1) }
-      else k++
+// ---------------------------------------------------------------------------
+// News (2026-09-28, second pass). Ceefax's shape: 101 is a page of headlines,
+// each with a page number, and every story has a page of its own. The first
+// pass packed briefs onto two screens and had to cut every story to its first
+// sentence to do it; this one gives each story the room to be told whole,
+// and makes the page numbers the way around, which is what teletext is.
+// ---------------------------------------------------------------------------
+
+/** Story pages: 111 to 129, one per story, in the order 101 lists them.
+ *  Decimal only: a hex number (11A) is one no remote can key, and the
+ *  hidden pages are the only place those belong. */
+export const STORY_FIRST = 111
+export const STORY_MAX = 19
+
+/** The portal's sections, as the one word a headline is filed under when the
+ *  item has no topic of its own; and the order the headlines take within a
+ *  day -- politics and science first, so the page does not open on three
+ *  airstrikes in a row just because Wikipedia files conflicts first. */
+const SECTIONS = [
+  ['Politics and elections', 'POLITICS'], ['International relations', 'WORLD'],
+  ['Science and technology', 'SCIENCE'], ['Business and economy', 'BUSINESS'],
+  ['Health and environment', 'HEALTH'], ['Arts and culture', 'ARTS'],
+  ['Law and crime', 'CRIME'], ['Sports', 'SPORT'],
+  ['Disasters and accidents', 'DISASTER'], ['Armed conflicts and attacks', 'CONFLICT'],
+]
+const sectionWord = (cat) => SECTIONS.find(([c]) => c === cat)?.[1] ?? 'NEWS'
+/** "BUSINESS" -> "Business": a fallback label in the case the others are in. */
+const titleCase = (w) => w[0] + w.slice(1).toLowerCase()
+const sectionRank = (cat) => { const i = SECTIONS.findIndex(([c]) => c === cat); return i < 0 ? SECTIONS.length : i }
+
+/** A headline label from the article or topic Wikipedia files the item
+ *  under: "the AFL Grand Final" -> "AFL Grand Final", "2026 Berlin Marathon"
+ *  -> "Berlin Marathon". Measured against real items before it was built on
+ *  (2026-09-28): most carry one; the rest fall back to their section. */
+export function newsLabel(raw, category, text = '') {
+  let t = String(raw ?? '').trim()
+  t = t.replace(/^(the|a|an)\s+/i, '').replace(/^\d{4}\s+/, '').replace(/\s+\([^)]*\)$/, '')
+  if (t) return clip(t[0].toUpperCase() + t.slice(1), 33)
+  // No topic: the section, and the first name in the story -- a place or a
+  // person -- so two fallbacks in one list are not both just "Disaster"
+  // (which is how the first cut of this read).
+  const name = namePhrase(text)
+  const sec = titleCase(sectionWord(category))
+  return clip(name ? `${sec}: ${name}` : sec, 33)
+}
+
+/** The first run of capitalised words after a story's opening word:
+ *  "Eighty-one people in Uttar Pradesh, India" -> "Uttar Pradesh". */
+export function namePhrase(text) {
+  const words = String(text).split(/\s+/).slice(1)
+  let run = []
+  for (const w of words) {
+    const bare = w.replace(/[,.;:'"()]+$/g, '').replace(/'s$/, '')
+    if (/^[A-Z][\w-]*$/.test(bare)) { run.push(bare); if (/[,.;:]$/.test(w)) break }
+    else if (run.length) {
+      // A lone adjective of place ("Himalayan", "Russian") describes the
+      // name that follows it; keep looking for the name.
+      if (run.length === 1 && /(an|ese|ish|ic)$/.test(run[0])) { run = []; continue }
+      break
     }
-    if (placed.length) out.push(placed)
   }
-  return out
+  return run.join(' ')
+}
+
+const isoLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+const LONG_DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+const MONTH_NAMES = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER']
+/** How a log's date reads next to the viewer's own day. */
+function dayLabel(iso, now) {
+  const today = new Date(now)
+  if (!iso || iso === isoLocal(today)) return 'TODAY'
+  const y = new Date(now); y.setDate(y.getDate() - 1)
+  if (iso === isoLocal(y)) return 'YESTERDAY'
+  const d = new Date(`${iso}T12:00`)
+  return `${LONG_DAYS[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`
+}
+
+/**
+ * The stories, in the order 101 lists them, each with its page number:
+ * "In the news" first (Wikipedia's own pick, current by definition), then
+ * the Current events log, newest day first and politics-before-airstrikes
+ * within a day, anything retelling a story already listed left out.
+ */
+export function newsStories(ctx) {
+  const itn = ctx.entry('itn')?.data
+  if (!itn) return []
+  const now = ctx.now
+  const out = itn.stories.map((text, i) => ({ label: newsLabel(itn.labels?.[i], null), text, section: 'IN THE NEWS', when: 'TODAY', top: true }))
+  const events = (ctx.entry('events')?.data?.items || []).map((e, i) => ({ ...e, i }))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || sectionRank(a.category) - sectionRank(b.category) || a.i - b.i)
+  for (const e of events) {
+    if (out.some(s => sameStory(s.text, e.text))) continue
+    out.push({ label: newsLabel(e.topic, e.category, e.text), text: e.text, section: sectionWord(e.category), when: dayLabel(e.date, now), top: false })
+  }
+  return out.slice(0, STORY_MAX).map((s, i) => ({ ...s, num: String(STORY_FIRST + i) }))
+}
+
+/** One headline on 101: the label and its page number, then the story's
+ *  opening words -- a label alone ("Kyiv strikes") says too little. */
+function headlineBlock(story) {
+  return {
+    height: 2,
+    draw(p, r) {
+      p.text(r, 1, clip(story.label, 33), YELLOW)
+      p.text(r, 36, story.num, CYAN)
+      p.text(r + 1, 1, clip(story.text, 38), WHITE)
+    },
+  }
 }
 
 page('101', 'News headlines', {
-  // Two full screens (2026-09-28): "In the news" first -- Wikipedia's own
-  // pick of the day -- then the day's Current events portal, briefed to a
-  // first sentence, to fill the rest. The top stories alone were four short
-  // items: one screen, or one and a lone story on a second.
   feeds: ['itn', 'events'],
   subpageMs: 12000,
   render(ctx) {
-    return gate(ctx, '101', 'NEWS', ['itn'], ({ itn }) => {
-      const events = ctx.entry('events')?.data?.items || []
-      const briefs = []
-      for (const e of events) {
-        const t = brief(e.text)
-        if ([...itn.stories, ...briefs].some(s => sameStory(s, t))) continue
-        briefs.push(t)
+    return gate(ctx, '101', 'NEWS', ['itn'], () => {
+      const stories = newsStories(ctx)
+      // Blocks in order; a day heading goes in wherever the day changes, so
+      // yesterday's news says so instead of passing as today's.
+      const blocks = []
+      let day = null
+      const now = new Date(ctx.now)
+      const todayLine = `${LONG_DAYS[now.getDay()]} ${now.getDate()} ${MONTH_NAMES[now.getMonth()]}`
+      for (const s of stories) {
+        if (s.when !== day) {
+          const head = s.when === 'TODAY' ? todayLine : s.when
+          blocks.push({ height: 1, heading: true, draw: (p, r) => p.text(r, 1, head, s.when === 'TODAY' ? GREEN : MAGENTA) })
+          day = s.when
+        }
+        blocks.push(headlineBlock(s))
       }
-      // Briefs that had to be cut off with "..." go after the ones that fit
-      // whole: a sentence that ends reads as news, one that trails off as a
-      // fault. They are there to fill a gap only if nothing whole fits it.
-      const whole = briefs.filter(t => !t.endsWith('...')), cut = briefs.filter(t => t.endsWith('...'))
-      const blocks = [
-        ...itn.stories.map(s => textBlock(null, s, { fg: WHITE })),
-        ...[...whole, ...cut].map(s => textBlock(null, s, { fg: CYAN })),
-      ]
-      const laid = fillPages(blocks, 2)
-      return laid.map((placed, i) => {
+      const laid = paginate(blocks, { gap: 0 })
+      // A day heading that ends up at the foot of a page, with its stories
+      // on the next one, belongs on that next page.
+      for (let i = 0; i < laid.length - 1; i++) {
+        const last = laid[i][laid[i].length - 1]
+        if (last?.block.heading) { laid[i].pop(); laid[i + 1] = paginate([last.block, ...laid[i + 1].map(x => x.block)], { gap: 0 })[0] }
+      }
+      return laid.slice(0, 2).map((placed, i) => {
         const p = new Page()
-        masthead(p, '101', 'NEWS', { sub: i, subs: laid.length, right: 'HEADLINES' })
+        masthead(p, '101', 'NEWS', { sub: i, subs: Math.min(2, laid.length), right: 'HEADLINES' })
         for (const { block, row } of placed) block.draw(p, row)
+        p.text(22, 1, 'KEY A STORY NUMBER TO READ IT', MAGENTA)
         creditLine(p, ctx, 'itn')
-        p.fast([['Ongoing', '102'], ['Most read', '104'], ['Tech', '150'], ['Index', '100']])
+        p.fast([['First', stories[0]?.num ?? '101'], ['Ongoing', '102'], ['Most read', '104'], ['Index', '100']])
         return p
       })
     })
   },
 })
+
+/** A story's own page. Registered on demand by pageDef(), like SIGNAL's
+ *  stations: the numbers exist once the news has arrived. */
+function storyPage(story, stories, ctx) {
+  const p = new Page()
+  masthead(p, story.num, 'NEWS', { right: story.section })
+  const head = wrapText(story.label, 38)
+  let r = BODY_TOP
+  head.slice(0, 2).forEach(l => { p.double(r, 1, l, YELLOW); r += 2 })
+  const now = new Date(ctx.now)
+  const when = story.when === 'TODAY' ? `${LONG_DAYS[now.getDay()]} ${now.getDate()} ${MONTH_NAMES[now.getMonth()]}` : story.when
+  p.text(r, 1, story.top ? when : `${story.section}  ${when}`, story.when === 'TODAY' ? CYAN : MAGENTA)
+  r = p.wrap(r + 2, 1, story.text, 38, WHITE, 21)
+  // The foot of the page points onward, as Ceefax's story pages did: the
+  // next few headlines, with their numbers, in whatever room the story left.
+  const i = stories.findIndex(s => s.num === story.num)
+  const next = stories[(i + 1) % stories.length]
+  const more = [1, 2, 3, 4, 5, 6].map(k => stories[(i + k) % stories.length]).filter(s => s !== story)
+  let row = r + 1
+  if (row <= 19 && more.length) {
+    p.text(row++, 1, 'MORE HEADLINES', GREEN)
+    for (const s of more) {
+      if (row > 21) break
+      p.text(row, 1, clip(s.label, 33), YELLOW)
+      p.text(row, 36, s.num, CYAN)
+      row++
+    }
+  }
+  creditLine(p, ctx, story.top ? 'itn' : 'events')
+  p.fast([['Headlines', '101'], ['Next', next.num], ['Most read', '104'], ['Index', '100']])
+  return p
+}
 
 page('102', 'Ongoing and recent deaths', {
   feeds: ['itn'],
@@ -962,6 +1077,11 @@ export function pageDef(num, ctx) {
   if (PAGES.has(n)) return PAGES.get(n)
   const notice = (ctx?.editorial?.notices || []).find(x => String(x.page).toUpperCase() === n)
   if (notice) return { num: n, title: `Notice: ${notice.title || n}`, feeds: [], render: () => [noticePage({ ...notice, page: n })] }
+  if (/^1[12][0-9A-F]$/.test(n) && ctx?.entry) {
+    const stories = newsStories(ctx)
+    const story = stories.find(x => x.num === n)
+    if (story) return { num: n, title: `News: ${story.label}`, feeds: ['itn', 'events'], render: (c) => [storyPage(story, stories, c)] }
+  }
   const roster = ctx?.entry?.('signal')?.data
   if (roster && /^5[12]\d$/.test(n)) {
     const all = stationPages(roster)
@@ -976,6 +1096,7 @@ export function pageDef(num, ctx) {
 export function pageOrder(ctx) {
   const nums = defs.filter(d => !d.hidden).map(d => d.num)
   for (const n of ctx?.editorial?.notices || []) nums.push(String(n.page).toUpperCase())
+  if (ctx?.entry) nums.push(...newsStories(ctx).map(x => x.num))
   const roster = ctx?.entry?.('signal')?.data
   if (roster) nums.push(...stationPages(roster).map(x => x.num))
   return [...new Set(nums)].sort((a, b) => parseInt(a, 16) - parseInt(b, 16))

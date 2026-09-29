@@ -150,16 +150,33 @@ had no `news` key on any date sampled back to 2025. Page 101 reads the
 action API's parse of `Template:In_the_news` instead, and `parseITN` cuts
 off the template's transcluded documentation.
 
-**News is two full screens** (2026-09-28). "In the news" alone is four or five
-short items, which made 101 one screen, or one screen plus a single story on a
-second. So 101 leads with those, then fills out from Wikipedia's **Current
-events portal** (feed `events`: today's page in UTC, then yesterday's, since
-today's is thin early on). Each item becomes a brief of its first sentence,
-anything telling the same story as a top item is dropped (`sameStory`: two
-shared names), and briefs that had to be cut off with "..." go last.
-`fillPages` packs exactly two subpages, letting a later block fill a gap an
-earlier one couldn't. What doesn't fit is dropped, because a headline page is
-a selection.
+**News is Ceefax-shaped** (2026-09-28, second pass). 101 is a page of
+headlines, each with a story number, and every story has its own page from
+111 to 129. Numbers are decimal only, because a remote can't key 11A. The first
+pass packed first-sentence briefs onto two screens instead, and every story
+lost its ending to fit.
+- **Sources:** "In the news" leads (4-5 items, current by definition). The rest
+  come from Wikipedia's **Current events portal** (feed `events`: today's
+  log in UTC, then yesterday's, each item carrying its log's UTC date).
+  Anything that retells a story already listed is dropped (`sameStory`: two
+  shared names).
+- **Labels** come from the article Wikipedia files the item under: the bold
+  link in "In the news", or the topic heading in the portal
+  (`newsLabel`: "2026 Berlin Marathon" becomes "Berlin Marathon"). This was
+  measured on real items first: most have one. The rest get their section
+  plus the first name in the story ("Disaster: Uttar Pradesh"). A lone
+  adjective of place ("Himalayan") is skipped (`namePhrase`), after the first
+  cut produced two identical "Disaster" labels and one "Disaster: Himalayan".
+- **Order within a day** is politics, world, science, business, health, arts,
+  crime, sport, disaster, conflict, so the page doesn't open on three
+  airstrikes because Wikipedia files conflicts first.
+- **Dates are the viewer's, not Wikipedia's.** At 20:00 in New York,
+  Wikipedia's "yesterday" is still the viewer's today, so each log's date is
+  compared with the local date (`dayLabel`). A day heading opens each day's
+  run of headlines, and a heading stranded at the foot of a screen moves to
+  the next one.
+- **Story pages** give the whole text, a date or section line, and "MORE
+  HEADLINES" in the space left over. Green goes to the next story.
 
 `tests/fixtures/` are real captures (see its README). A fake built from a spec
 proves only that you read your own assumption. That's SIGNAL's STATION BREAK

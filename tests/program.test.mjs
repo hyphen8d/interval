@@ -299,3 +299,19 @@ test('switching off returns to standby and a deploy is picked up at the switch',
   assert.equal(h.reloads.length, 1)
   h.shutdown()
 })
+
+test('news: key a story number from the headlines and read it; Wikipedia\'s UTC day is the viewer\'s today', async () => {
+  // 20:00 in New York is 00:00 UTC on the 29th: Wikipedia's "today" has no
+  // log yet (a 404 in the harness) and its "yesterday" is the viewer's today.
+  const h = await boot()
+  await h.go('101', 3500)
+  assert.ok(h.page().includes('MONDAY 28 SEPTEMBER'))
+  assert.ok(!h.page().includes('YESTERDAY'), "nothing from the 28th's log is called yesterday on the 28th")
+  await h.go('111', 3500)
+  assert.equal(h.program.page, '111')
+  assert.ok(h.page().includes('AFL Grand Final'))
+  h.key('F2')
+  await h.settle(3500)
+  assert.equal(h.program.page, '112', 'green is the next story')
+  h.shutdown()
+})

@@ -38,8 +38,9 @@ export function decodeEntities(s) {
 const stripTags = (h) => decodeEntities(String(h).replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim()
 
 /** The <li> items at the top level of the first <ul> in `html`, with nested
- *  lists (the "timeline" sub-links under an ongoing event) dropped. */
-function topLevelItems(html) {
+ *  lists (the "timeline" sub-links under an ongoing event) dropped. With
+ *  `bolds`, each item's bold phrases instead of its text. */
+function topLevelItems(html, bolds = false) {
   const start = html.indexOf('<ul')
   if (start < 0) return []
   let depth = 0, i = start, itemStart = -1
@@ -58,6 +59,7 @@ function topLevelItems(html) {
     }
     i = re.lastIndex
   }
+  if (bolds) return items.map(it => [...it.matchAll(/<b>([\s\S]*?)<\/b>/g)].map(m => fold(stripTags(m[1]))).filter(Boolean))
   return items.map(it => stripTags(it.replace(/<ul[\s\S]*?<\/ul>/g, '')))
 }
 
@@ -78,12 +80,16 @@ export function parseITN(json) {
   const stories = topLevelItems(head)
     .map(s => s.replace(/\s*\([^()]*\bpictured\)\s*/gi, ' ').replace(/\s+([.,])/g, '$1').trim())
     .filter(Boolean)
+  // The article each story is about is the one set in bold: "the AFL Grand
+  // Final", "Hashim Thaci". It is what the headlines page files the story
+  // under (pages.js newsLabel).
+  const labels = topLevelItems(head, true).map(bolds => bolds[0] || null)
   const after = (label) => {
     if (footer < 0) return []
     const at = html.indexOf(label, footer)
     return at < 0 ? [] : topLevelItems(html.slice(at))
   }
-  const out = { stories, ongoing: after('Ongoing'), deaths: after('Recent deaths') }
+  const out = { stories, labels, ongoing: after('Ongoing'), deaths: after('Recent deaths') }
   if (!out.stories.length) throw new Error('no stories found in the In the news box')
   return out
 }
@@ -117,13 +123,20 @@ export function parseCurrentEvents(json) {
   while ((m = re.exec(html))) {
     if (m[3] !== undefined) { category = stripTags(m[3]); continue }
     const [, close, tag] = m
-    if (tag === 'ul') { if (stack.length) stack[stack.length - 1].hasList = true; continue }
-    if (!close) { stack.push({ from: re.lastIndex, hasList: false }); continue }
+    if (tag === 'ul') {
+      // An entry with a list under it is a topic heading ("Kyiv strikes");
+      // its own text, up to the list, is what the news beneath is about.
+      const top = stack[stack.length - 1]
+      if (!close && top && !top.hasList) { top.hasList = true; top.topic = fold(stripTags(html.slice(top.from, m.index))).replace(/,.*$/, '').trim() }
+      continue
+    }
+    if (!close) { stack.push({ from: re.lastIndex, hasList: false, topic: null }); continue }
     const li = stack.pop()
     if (!li || li.hasList) continue
     let text = stripTags(html.slice(li.from, m.index))
     text = text.replace(/([.!?]["']?)\s*(\([^()]{1,80}\)\s*)+$/, '$1').trim()
-    if (text.length > 20) items.push({ category, text: fold(text) })
+    const topic = [...stack].reverse().find(x => x.topic)?.topic || null
+    if (text.length > 20) items.push({ category, topic, text: fold(text) })
   }
   return items
 }
@@ -330,7 +343,11 @@ export const FEEDS = {
       const days = await Promise.all([today, yesterday].map(d =>
         getJSON(f, currentEventsUrl(d)).then(parseCurrentEvents).catch(() => null)))
       if (days.every(d => d === null)) throw new Error('neither day could be read')
-      return { items: days.flatMap(d => d || []) }
+      // Each item knows which day's log it came from, as a UTC date, so the
+      // headlines page can compare it with the viewer's own date: at 8pm in
+      // New York, Wikipedia's "yesterday" is still the viewer's today.
+      const iso = (d) => d.toISOString().slice(0, 10)
+      return { items: days.flatMap((d, i) => (d || []).map(x => ({ ...x, date: iso(i === 0 ? today : yesterday) }))) }
     },
   },
   featured: {

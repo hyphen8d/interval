@@ -149,28 +149,47 @@ test('rows stay within forty columns everywhere', () => {
   }
 })
 
-test('news is two full screens: In the news first, then the day briefed', async () => {
-  const { brief, sameStory, fillPages } = await import('../pages.js')
-  assert.equal(brief('Polish jets are scrambled. Individuals are urged to shelter.'), 'Polish jets are scrambled.')
-  assert.ok(brief('x '.repeat(200)).endsWith('...'))
-  assert.ok(sameStory('Hashim Thaci of Kosovo is sentenced', 'Kosovo court sentences Hashim Thaci'))
-  assert.ok(!sameStory('Russian strikes on Kyiv', 'Floods in Nepal and India'))
-  const rows = (h) => ({ height: h, draw() {} })
-  // 18 rows, a blank row between blocks: 5+5 leaves 7, the 9 cannot go
-  // there, the 4 behind it can -- and the 9 opens the second page.
-  const laid = fillPages([rows(5), rows(5), rows(9), rows(4), rows(6), rows(6), rows(6)], 2)
-  assert.equal(laid.length, 2, 'never more than two')
-  assert.deepEqual(laid[0].map(p => p.block.height), [5, 5, 4], 'a block that does not fit makes way for one that does')
-  assert.deepEqual(laid[1].map(p => p.block.height), [9, 6])
+test('headline labels come from the article a story is filed under, or its section and first name', async () => {
+  const { newsLabel, namePhrase } = await import('../pages.js')
+  assert.equal(newsLabel('the AFL Grand Final'), 'AFL Grand Final')
+  assert.equal(newsLabel('2026 Berlin Marathon', 'Sports'), 'Berlin Marathon')
+  assert.equal(newsLabel('tilcayo'), 'Tilcayo')
+  assert.equal(newsLabel(null, 'Disasters and accidents', 'Eighty-one people in Uttar Pradesh, India, die.'), 'Disaster: Uttar Pradesh')
+  assert.equal(namePhrase('An avalanche kills two at the Himalayan mountain Nemjung in Nepal.'), 'Nemjung', 'a lone adjective of place is not a name')
+  assert.equal(newsLabel(null, 'Sports', 'all lower case'), 'Sport')
+})
 
-  const ctx = ctxWith({ ...allData(), events: { items: Object.values(fx('wiki-current-events.json')).flatMap(F.parseCurrentEvents) } })
+test('101 lists headlines with story numbers; each number is a page telling the story whole', async () => {
+  const { newsStories } = await import('../pages.js')
+  const { fixtureEvents } = await import('../tools/lib/fixture-ctx.mjs')
+  const ctx = ctxWith({ ...allData(), events: fixtureEvents(F) })
+  const stories = newsStories(ctx)
+  assert.ok(stories.length >= 16)
+  assert.ok(stories.every(s => /^1[12]\d$/.test(s.num)), 'decimal numbers only: a remote cannot key 11A')
+  assert.deepEqual(stories.slice(0, 4).map(s => s.top), [true, true, true, true], 'In the news leads')
   const subs = pageDef('101', ctx).render(ctx)
-  assert.equal(subs.length, 2)
-  const text = subs.map(p => p.lines().join(' ')).join(' ')
-  assert.ok(text.indexOf('Brisbane Lions') < text.indexOf('Polish military'), 'the top stories lead')
-  for (const p of subs) {
-    const used = p.lines().slice(4, 22).filter(Boolean).length
-    assert.ok(used >= 13, `a subpage is filled (${used} of 18 rows carry text, the rest are gaps between stories)`)
+  assert.ok(subs.length <= 2)
+  const index = subs.map(p => p.lines().join('\n')).join('\n')
+  assert.match(index, /AFL Grand Final\s+111/)
+  assert.match(index, /MONDAY 28 SEPTEMBER/)
+  assert.match(index, /YESTERDAY/, "the 27th's log is marked as yesterday")
+  const kyiv = stories.find(s => s.label === 'Kyiv strikes')
+  const [page] = pageDef(kyiv.num, ctx).render(ctx)
+  const text = page.lines().join(' ').replace(/\s+/g, ' ')
+  assert.ok(text.includes('residential building in Kyiv, Ukraine.'), 'the whole story, not a first sentence')
+  assert.match(text, /CONFLICT MONDAY 28 SEPTEMBER/)
+  assert.match(text, /MORE HEADLINES/)
+})
+
+test('headlines put politics before airstrikes within a day', async () => {
+  const { newsStories } = await import('../pages.js')
+  const { fixtureEvents } = await import('../tools/lib/fixture-ctx.mjs')
+  const ctx = ctxWith({ ...allData(), events: fixtureEvents(F) })
+  const order = ['POLITICS', 'WORLD', 'SCIENCE', 'BUSINESS', 'HEALTH', 'ARTS', 'CRIME', 'SPORT', 'DISASTER', 'CONFLICT']
+  for (const day of ['TODAY', 'YESTERDAY']) {
+    const ranks = newsStories(ctx).filter(s => !s.top && s.when === day).map(s => order.indexOf(s.section))
+    assert.ok(ranks.length, day)
+    assert.deepEqual(ranks, [...ranks].sort((a, b) => a - b), `${day} is in section order`)
   }
 })
 
@@ -178,5 +197,5 @@ test('news still shows the top stories when Current events is down', () => {
   const ctx = ctxWith(allData(), {}, { errors: { events: 'HTTP 503' } })
   const subs = pageDef('101', ctx).render(ctx)
   assert.ok(subs.length >= 1)
-  assert.match(subs[0].lines().join(' '), /Brisbane Lions/)
+  assert.match(subs[0].lines().join(' '), /AFL Grand Final/)
 })
