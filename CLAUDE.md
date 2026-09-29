@@ -108,8 +108,9 @@ rebuilt.
   comes from the weather at the viewer's location (storms and rain), rare
   interference bursts, or `?rx=`.
 - **The seven sections** are `pages.js` `SECTIONS`: news (101-102), today
-  (200-203), weather (300-302), money (401-402), sport (601-606), pause
-  (500-503) and gallery (700, eight pictures), each a single magazine. The index is drawn
+  (200-203), weather (300-302), money (401-402), pause (500-503), sport
+  (601-606) and gallery (700, eight pictures), each a single magazine, in
+  page-number order (the index once read 401, 601, 500). The index is drawn
   from the same list, and so is cycling.
 - **Cycling is manual.** N starts it; the set never cycles by itself (a test
   holds that). It shows every page of a section, then the next section, round
@@ -153,6 +154,12 @@ rebuilt.
   around the one-ink-one-paper cell: the lighthouse's bands are whole cell
   rows, and the night train's black body is the cells' paper (`trainSpan`
   feeds the bgFor), because windows, body and valley are three colours.
+- **The index (100)** leads with a NOW line (`nowItems`): the Dow's move,
+  the temperature (here, else New York) and a score, each only once its
+  source has answered, and dropped whole if it won't fit; `liveMs` keeps it
+  current. Sections have a blank row between them; sport is three to a row
+  (`perRow`). The masthead says INDEX, since the header already says
+  INTERVAL. Any change to SECTIONS shows up here, so look at the page after.
 - **Pages you hold** (2026-09-28, the owner's ask: "pages people hold
   because they are useful"). **502 Focus**: a 25/5-minute timer on the
   fastext keys (START/PAUSE, RESET, BREAK/WORK). It lives on the program

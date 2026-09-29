@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import * as F from '../feeds.js'
-import { PAGES, pageDef, pageOrder, INDEX, MAGAZINES, SECTIONS } from '../pages.js'
+import { PAGES, pageDef, pageOrder, INDEX, MAGAZINES, SECTIONS, nowItems } from '../pages.js'
 import { fixtureData } from '../tools/lib/fixture-ctx.mjs'
 import { KEYS } from '../constants.js'
 import { validPage } from '../carousel.js'
@@ -255,4 +255,21 @@ test('coming up draws from its sources, and a gallery draws only its current pic
   assert.match(g.render({ ...ctx, env: { ...ctx.env, sub: 4 } })[4].lines().join('\n'), /AQUARIUM/)
   assert.notEqual(a[5], b[5], 'the picture on screen moves')
   assert.equal(a[6], b[6], 'the others hold still')
+})
+
+test('the index: sections in page-number order, a NOW line from whatever has answered', () => {
+  const firstNum = (s) => parseInt(s.pages[0][1], 16)
+  const order = SECTIONS.map(firstNum)
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), 'the index never reads 401, 601, 500')
+  const ctx = ctxWith()
+  const text = pageDef('100', ctx).render(ctx)[0].lines()
+  assert.match(text[3], /^ NOW DOW [▲▼]\d+\.\d%\s+(HERE|NYC) \d+[FC]\s+[A-Z]+ \d+ [A-Z]+ \d+/)
+  assert.ok(text[3].length <= 40)
+  assert.match(text.join('\n'), /SPORT\s+NFL 601\s+NBA 602\s+MLB 603/)
+  assert.ok(!/\bTODAY\s+300/.test(text.join('\n')), '300 is LOCAL, not a second TODAY')
+  // Nothing has answered: no NOW line, and the index draws anyway.
+  const bare = ctxWith({})
+  const none = pageDef('100', bare).render(bare)
+  assert.ok(none && !none[0].lines()[3].includes('NOW'))
+  assert.equal(nowItems(bare).length, 0)
 })

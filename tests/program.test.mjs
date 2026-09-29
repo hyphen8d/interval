@@ -413,12 +413,13 @@ test('decide: the die tumbles, then lands on 1-20; the coin lands on heads or ta
 
 test('cycling skips the timer, the dice, and a league with no games', async () => {
   const h = await boot()
-  const pause = h.program.cyclePages(5)
+  const sec = (name) => Pages.SECTIONS.findIndex(s => s.name === name)
+  const pause = h.program.cyclePages(sec('PAUSE'))
   assert.ok(!pause.includes('502') && !pause.includes('503'))
   assert.ok(pause.includes('501'))
   h.program.feeds.entries.get('sport_nba').data = { games: [] }
   h.program.feeds.entries.get('sport_nba').key = 'live'
-  assert.ok(!h.program.cyclePages(4).includes('602'))
+  assert.ok(!h.program.cyclePages(sec('SPORT')).includes('602'))
   h.shutdown()
 })
 

@@ -113,8 +113,7 @@ test('the phone remote is told what the coloured keys do, page by page', async (
 test('the index tells a first-time viewer how in: keys on a desktop, taps on a phone', async () => {
   const h = await boot()
   await h.go('100', 3500)
-  assert.ok(h.find('KEY A PAGE NUMBER'))
-  assert.ok(h.find('N: LET THE SET CYCLE THE PAGES'))
+  assert.ok(h.find('KEY A PAGE NUMBER, OR N TO CYCLE'))
   assert.ok(!h.text().includes('CLICK'), 'no mouse on the desktop set')
   h.shutdown()
 })

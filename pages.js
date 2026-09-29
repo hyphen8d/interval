@@ -77,10 +77,15 @@ export const MAGAZINES = {
 export const SECTIONS = [
   { name: 'NEWS', pages: [['HEADLINES', '101'], ['FACTS', '102']] },
   { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201'], ['CLOCK', '202'], ['COMING UP', '203']] },
-  { name: 'WEATHER', pages: [['TODAY', '300'], ['5-DAY', '301'], ['US CITIES', '302']] },
+  // 300 is LOCAL, not TODAY: the index printed TODAY as a section and again
+  // as a weather page two rows apart.
+  { name: 'WEATHER', pages: [['LOCAL', '300'], ['5-DAY', '301'], ['US CITIES', '302']] },
   { name: 'MONEY', pages: [['MARKETS', '401'], ['YOUR MONEY', '402']] },
-  { name: 'SPORT', pages: [['NFL', '601'], ['NBA', '602'], ['MLB', '603'], ['NHL', '604'], ['SOCCER', '605'], ['COLLEGE', '606']] },
+  // In page-number order (2026-09-28): SPORT came before PAUSE, and the index
+  // read 401, 601, 500 -- which on a teletext index looks like a misprint.
   { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501'], ['FOCUS', '502'], ['DECIDE', '503']] },
+  // Three to a row on the index (`perRow`), so the short league names.
+  { name: 'SPORT', perRow: 3, pages: [['NFL', '601'], ['NBA', '602'], ['MLB', '603'], ['NHL', '604'], ['EPL', '605'], ['CFB', '606']] },
   { name: 'GALLERY', pages: [['PICTURES', '700']] },
 ]
 export const sectionOf = (num) => SECTIONS.findIndex(s => s.pages.some(([, n]) => n === String(num).toUpperCase()))
@@ -254,34 +259,84 @@ const MONTH_NAMES = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JU
  *  as British to the people this is for). */
 const longDate = (ms) => { const d = new Date(ms); return `${LONG_DAYS[d.getDay()]}, ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}` }
 
+/**
+ * The NOW line on the index (2026-09-28): what is happening, in one row --
+ * the Dow's last move, the temperature (here if the set knows where here
+ * is, else New York), and a score (a game in progress, else the latest
+ * final). Ceefax's 100 carried a teaser for the same reason: an index that
+ * is only a table of contents is a page nobody leaves up. Each item appears
+ * only once its source has answered, so the index never waits on a fetch;
+ * items that would not fit are dropped whole, never cut.
+ */
+export function nowItems(ctx) {
+  const items = []
+  const dow = ctx.entry('markets')?.data?.series?.find(s => s.id === 'DJIA')
+  if (dow && Number.isFinite(dow.prev) && dow.prev) {
+    const pct = (dow.value / dow.prev - 1) * 100
+    items.push([`DOW ${pct >= 0 ? '▲' : '▼'}${Math.abs(pct).toFixed(1)}%`, pct >= 0 ? GREEN : RED])
+  }
+  const here = ctx.entry('weather')?.data
+  const cities = ctx.entry('cities')?.data
+  if (here?.current && Number.isFinite(here.current.temp)) items.push([`HERE ${here.current.temp}${here.units || 'F'}`, CYAN])
+  else {
+    const ny = cities?.cities?.find(c => c.name === 'NEW YORK')
+    if (ny && Number.isFinite(ny.temp)) items.push([`NYC ${ny.temp}${cities.units || 'F'}`, CYAN])
+  }
+  const games = LEAGUES.flatMap(([key]) => (ctx.entry(`sport_${key}`)?.data?.games || []))
+  const g = games.find(x => x.state === 'in') ||
+    games.filter(x => x.state === 'post').sort((a, b) => (b.date || 0) - (a.date || 0))[0]
+  if (g) items.push([`${g.away.abbr} ${g.away.score} ${g.home.abbr} ${g.home.score}`, g.state === 'in' ? GREEN : WHITE])
+  return items
+}
+
 page('100', 'Index', {
+  feeds: ['markets', 'cities', ...LEAGUES.map(([key]) => `sport_${key}`)],
+  // Redrawn in place so the NOW line keeps up; the table itself never moves.
+  liveMs: 15000,
   render(ctx) {
     const p = new Page()
     p.band(1, BLUE); p.band(2, BLUE)
     p.double(1, 1, 'INTERVAL', YELLOW, BLUE)
-    p.text(1, 24, 'THE PAGES', WHITE)
-    p.text(2, 24, 'BETWEEN PICTURES', CYAN)
-    // Section by section, the section name in its own masthead colour, its
-    // pages beside it -- the index is the map cycling follows.
-    let r = BODY_TOP
+    // INDEX, not the tagline again: the header row already says INTERVAL.
+    p.double(1, 33, 'INDEX', WHITE, BLUE)
+    let c = 5
+    const items = nowItems(ctx)
+    if (items.length) p.text(3, 1, 'NOW', YELLOW)
+    for (const [text, colour] of items) {
+      if (c + text.length > COLS - 1) break
+      p.text(3, c, text, colour)
+      c += text.length + 2
+    }
+    // Section by section, in page-number order, the name in its own
+    // masthead colour and a blank row between sections -- the index is the
+    // map cycling follows. Two to a row (ten-column label, then its number),
+    // or three for a section of short names (sport).
+    let r = 5
     for (const sec of SECTIONS) {
       const m = MAGAZINES[sec.pages[0][1][0]]
       p.text(r, 1, sec.name, m.band === BLUE ? CYAN : m.band === WHITE ? WHITE : m.band)
-      // Two to a row: a ten-column label and its number, twice.
+      const per = sec.perRow || 2
       sec.pages.forEach(([label, num], i) => {
-        const row = r + Math.floor(i / 2), col = i % 2 ? 25 : 10
-        p.text(row, col, clip(label, 10), WHITE)
-        p.text(row, col + 11, num, CYAN)
+        const row = r + Math.floor(i / per)
+        if (per === 3) {
+          const col = 10 + (i % 3) * 10
+          p.text(row, col, label, WHITE); p.text(row, col + label.length + 1, num, CYAN)
+        } else {
+          const col = i % 2 ? 25 : 10
+          p.text(row, col, clip(label, 10), WHITE)
+          p.text(row, col + 11, num, CYAN)
+        }
       })
-      r += Math.ceil(sec.pages.length / 2)
+      r += Math.ceil(sec.pages.length / per) + 1
     }
-    p.text(r + 1, 10, 'WELCOME', WHITE); p.text(r + 1, 21, '190', CYAN)
-    p.text(r + 1, 25, 'HELP', WHITE); p.text(r + 1, 36, '199', CYAN)
-    // The ways in, said once, where a first-time viewer is looking.
-    // Keyboard on a desktop, taps on a phone -- no mouse (pointer.js).
-    p.text(22, 1, ctx.env.touch ? 'TAP A NUMBER, OR KEY IT IN' : 'KEY A PAGE NUMBER', MAGENTA)
-    p.text(23, 1, ctx.env.touch ? 'CYCLE: THE CYCLE BUTTON' : 'N: LET THE SET CYCLE THE PAGES', WHITE)
-    p.fast([['NEWS', '101'], ['WEATHER', '302'], ['MONEY', '401'], ['PAUSE', '500']])
+    // The two pages outside the sections, straight under the list and in its
+    // columns, so they read as part of it.
+    p.text(r - 1, 10, 'WELCOME', WHITE); p.text(r - 1, 21, '190', CYAN)
+    p.text(r - 1, 25, 'HELP', WHITE); p.text(r - 1, 36, '199', CYAN)
+    // The ways in, said once, in one line, where a first-time viewer is
+    // looking. Keyboard on a desktop, taps on a phone -- no mouse (pointer.js).
+    p.text(23, 1, ctx.env.touch ? 'TAP A NUMBER, OR PRESS CYCLE' : 'KEY A PAGE NUMBER, OR N TO CYCLE', MAGENTA)
+    p.fast([['NEWS', '101'], ['WEATHER', '302'], ['SPORT', '601'], ['PAUSE', '500']])
     return [p]
   },
 })
@@ -674,7 +729,7 @@ page('302', 'Weather: US cities', {
         p.text(r, 30, `${c.hi}/${c.lo}`.padStart(8), WHITE)
       })
       creditLine(p, ctx, 'cities')
-      p.fast([['TODAY', '300'], ['5-DAY', '301'], ['NEWS', '101'], ['INDEX', '100']])
+      p.fast([['LOCAL', '300'], ['5-DAY', '301'], ['NEWS', '101'], ['INDEX', '100']])
       return [p]
     })
   },
