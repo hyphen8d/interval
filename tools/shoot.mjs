@@ -128,7 +128,10 @@ const onPage = (n) => `window.screen0.program.page === '${n}' && !window.screen0
 const RECIPES = {
   async hero() {
     await session(`${BASE}`, {}, async (a) => {
-      await a.key('p'); await a.until(onPage('100')); await a.settleFrames(150)
+      // A switch-on lands on the welcome (190), after the ~5s boot; the
+      // hero is the index, so go there the way a viewer would.
+      await a.key('p'); await a.until(onPage('190')); await a.key('i')
+      await a.until(onPage('100')); await a.settleFrames(150)
       await a.png(path.join(SHOTS, 'hero.png'))
     })
   },
@@ -144,7 +147,7 @@ const RECIPES = {
   },
   async pages() {
     // Not 1AF or 1FF: the hidden pages stay unadvertised (CLAUDE.md).
-    for (const n of flag('pages', '101,300,401,500,700').split(',')) {
+    for (const n of flag('pages', '101,302,401,500,700').split(',')) {
       await session(`${BASE}?page=${n}&power=on`, {}, async (a) => {
         await a.until(onPage(n)); await a.settleFrames(120)
         await a.png(path.join(SHOTS, `page-${n.toLowerCase()}.png`))

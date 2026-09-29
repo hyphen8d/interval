@@ -341,8 +341,12 @@ TAP here. Use `--test-reporter=tap` when parsing output.
 - Run `npm run stamp` before every deploy (SHIP does it).
 - Fastext labels are at most 9 characters. At 10, a label runs into the next
   one, and the lint holds this.
-- `screenshots/` comes from `npm run shoot` against the **local** admin server.
-  Headless Chrome renders a few frames a second, so a page change or a subpage
+- `screenshots/` comes from `npm run shoot` against the **local** tree, never
+  the deployed site. The default URL is the admin server on loopback; the
+  running admin binds the tailnet, so on the dev box pass
+  `--url=http://127.0.0.1:8090/` (the dev server). Every file there is made
+  by a recipe; a shot no recipe makes is an orphan of a removed page and
+  goes. Headless Chrome renders a few frames a second, so a page change or a subpage
   turn ghosts through the phosphor persistence. Settle on frames, and HOLD
   before capturing a page that has subpages.
 - Verify feel in a real browser too, and count frames first (a covered window
