@@ -200,13 +200,90 @@ export function parseForecast(j) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Sport, space, holidays (2026-09-28). All keyless and browser-readable,
+// checked live. ESPN's scoreboard is undocumented: it can change without
+// notice, which is what check-feeds is for.
+// ---------------------------------------------------------------------------
+
+/** The leagues, as [key, name, ESPN path, page]. */
+export const LEAGUES = [
+  ['nfl', 'NFL', 'football/nfl', '601'],
+  ['nba', 'NBA', 'basketball/nba', '602'],
+  ['mlb', 'MLB', 'baseball/mlb', '603'],
+  ['nhl', 'NHL', 'hockey/nhl', '604'],
+  ['epl', 'PREMIER LEAGUE', 'soccer/eng.1', '605'],
+  ['cfb', 'COLLEGE FOOTBALL', 'football/college-football', '606'],
+]
+export const scoreboardUrl = (path) => `https://site.api.espn.com/apis/site/v2/sports/${path}/scoreboard`
+
+/** A scoreboard: this week's (or round's) games, each with both teams,
+ *  their scores, and where the game is -- 'pre', 'in' or 'post'. */
+export function parseScoreboard(json) {
+  if (!json || !Array.isArray(json.events)) throw new Error('no events in the scoreboard')
+  return {
+    games: json.events.map(e => {
+      const cs = e.competitions?.[0]?.competitors || []
+      const side = (h) => {
+        const c = cs.find(x => x.homeAway === h) || {}
+        return { abbr: fold(c.team?.abbreviation || '?'), name: fold(c.team?.shortDisplayName || ''), score: c.score ?? '', winner: !!c.winner }
+      }
+      return { date: Date.parse(e.date), state: e.status?.type?.state || 'pre', detail: fold(e.status?.type?.shortDetail || ''), away: side('away'), home: side('home') }
+    }).filter(g => Number.isFinite(g.date)),
+  }
+}
+export const anyLive = (data) => !!data?.games?.some(g => g.state === 'in')
+
+export const LAUNCHES_URL = 'https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=6'
+/** The next launches, soonest first. "Upcoming" still lists one that went
+ *  up an hour ago, so the page filters by time, not this. */
+export function parseLaunches(json) {
+  if (!json || !Array.isArray(json.results)) throw new Error('no launches in the response')
+  return {
+    launches: json.results.map(r => {
+      const [vehicle, mission] = String(r.name || '').split(' | ')
+      return {
+        vehicle: fold(vehicle || ''), mission: fold(mission || r.mission?.name || ''),
+        net: Date.parse(r.net), status: fold(r.status?.abbrev || ''),
+        provider: fold(r.launch_service_provider?.name || ''), where: fold(r.pad?.location?.name || ''),
+      }
+    }).filter(l => Number.isFinite(l.net)).sort((a, b) => a.net - b.net),
+  }
+}
+
+export const HOLIDAYS_URL = 'https://date.nager.at/api/v3/NextPublicHolidays/US'
+/** The next US public holidays, one entry a date ("Columbus Day" and
+ *  "Indigenous Peoples' Day" fall on one Monday, by state). */
+export function parseHolidays(json) {
+  if (!Array.isArray(json)) throw new Error('not an array')
+  const byDate = new Map()
+  for (const h of json) {
+    if (!h?.date) continue
+    const names = byDate.get(h.date) || []
+    names.push(fold(h.name || h.localName || ''))
+    byDate.set(h.date, names)
+  }
+  return { holidays: [...byDate].map(([date, names]) => ({ date, names })) }
+}
+
+export const ISS_URL = 'https://api.wheretheiss.at/v1/satellites/25544'
+export function parseIss(json) {
+  if (!json || !Number.isFinite(json.latitude)) throw new Error('no position in the response')
+  return { lat: json.latitude, lon: json.longitude, alt: json.altitude, kmh: json.velocity, sunlit: json.visibility === 'daylight', at: json.timestamp * 1000 }
+}
+
 /** The markets file the deploy workflow writes (tools/fetch-markets.mjs):
  *  checked for the shape page 401 reads, since it is built elsewhere. */
 export function parseMarkets(json) {
   if (!json || !Array.isArray(json.series) || !json.series.length) throw new Error('no series in markets.json')
   const series = json.series.filter(s => s && s.name && Number.isFinite(s.value))
   if (!series.length) throw new Error('every series in markets.json was empty')
-  return { at: json.at || null, series }
+  // Page 402's series. Kept apart from `series` so an old markets.json
+  // without them still serves 401. The first cut returned only `series`,
+  // and 402 said "not in the last build" against a build that had them all;
+  // its tests read the fixture around this parser, so none noticed.
+  const household = (Array.isArray(json.household) ? json.household : []).filter(s => s && s.name && Number.isFinite(s.value))
+  return { at: json.at || null, series, household }
 }
 
 /**
@@ -337,6 +414,30 @@ export const FEEDS = {
     url: (env) => citiesUrl(env.units),
     load: async (f, env) => parseCities(await getJSON(f, citiesUrl(env.units))),
   },
+  ...Object.fromEntries(LEAGUES.map(([key, name, path]) => [`sport_${key}`, {
+    label: 'ESPN', title: `ESPN: ${name} scoreboard`, refreshMs: 15 * MIN,
+    // While a game is on, every minute: a score is the one thing on this
+    // service that changes by the minute and is watched that way.
+    liveRefreshMs: MIN, isLive: anyLive,
+    url: () => scoreboardUrl(path),
+    load: async (f) => parseScoreboard(await getJSON(f, scoreboardUrl(path))),
+  }])),
+  launches: {
+    label: 'THE SPACE DEVS', title: 'Launch Library: upcoming launches', refreshMs: 60 * MIN,
+    // Free use is fifteen requests an hour per address: once an hour is it.
+    url: () => LAUNCHES_URL,
+    load: async (f) => parseLaunches(await getJSON(f, LAUNCHES_URL)),
+  },
+  holidays: {
+    label: 'NAGER.DATE', title: 'Nager.Date: next US public holidays', refreshMs: 24 * 60 * MIN,
+    url: () => HOLIDAYS_URL,
+    load: async (f) => parseHolidays(await getJSON(f, HOLIDAYS_URL)),
+  },
+  iss: {
+    label: 'WHERETHEISS.AT', title: 'Where the ISS is, now', refreshMs: 10 * 1000, persist: false,
+    url: () => ISS_URL,
+    load: async (f) => parseIss(await getJSON(f, ISS_URL)),
+  },
   markets: {
     label: 'FRED', title: 'FRED: market closes (built by the deploy workflow)', refreshMs: 60 * MIN,
     url: (env) => env.marketsUrl || MARKETS_URL,
@@ -427,7 +528,8 @@ export class FeedCache {
     if (key === null) return Promise.resolve()
     const now = this.now()
     const current = e.data && e.key === key
-    if (!force && current && now - e.at < f.refreshMs) return Promise.resolve()
+    const every = f.liveRefreshMs && f.isLive?.(e.data) ? f.liveRefreshMs : f.refreshMs
+    if (!force && current && now - e.at < every) return Promise.resolve()
     if (!force && e.retryAt > now) return Promise.resolve()
     const p = (async () => {
       try {

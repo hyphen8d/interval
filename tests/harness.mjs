@@ -30,6 +30,11 @@ export function fixtureFetch(url) {
   const u = String(url)
   if (u.includes('Template:In_the_news')) return fixture('wiki-itn.json')
   if (u === 'markets.json' || u.endsWith('/markets.json')) return fixture('markets.json')
+  const espn = u.match(/site\.api\.espn\.com\/apis\/site\/v2\/sports\/([\w.-]+)\/([\w.-]+)\/scoreboard/)
+  if (espn) return fixture(`espn-${espn[1]}-${espn[2]}.json`)
+  if (u.includes('thespacedevs.com')) return fixture('launches.json')
+  if (u.includes('date.nager.at')) return fixture('holidays-us.json')
+  if (u.includes('wheretheiss.at')) return fixture('iss.json')
   // Keyed by the portal's own title; a day not captured is a 404, which is
   // how the harness's own boot time (00:00 UTC on the 29th) exercises the
   // fall-back to yesterday.

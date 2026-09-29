@@ -5,15 +5,16 @@ and leave to cycle.
 
 ![Page 100, the index](screenshots/hero.jpg)
 
-Six sections, every page readable at a glance:
+Seven sections, every page readable at a glance:
 
 | | pages |
 | --- | --- |
 | **News** | 101 headlines, 102 did you know (tech, games, hacking) |
-| **Today** | 200 on this day, 201 born today, 202 the clock |
-| **Weather** | 300 today, 301 five days (both for where you are), 302 twelve US cities |
-| **Money** | 401 world markets at the close |
-| **Pause** | 500 breathe, 501 a thought for today, 502 the aquarium |
+| **Today** | 200 on this day, 201 born today, 202 the clock, 203 coming up (the weekend, the next holiday, the next launch), 204 where the space station is |
+| **Weather** | 300 today with sunrise and sunset, 301 five days (both for where you are), 302 twelve US cities |
+| **Money** | 401 world markets at the close, 402 your money (gas, mortgages, inflation, rates, jobs) |
+| **Sport** | 601 NFL, 602 NBA, 603 MLB, 604 NHL, 605 Premier League, 606 college football |
+| **Pause** | 500 breathe, 501 a thought for today, 502 the aquarium, 503 a focus timer, 504 decide for me (a d20 and a coin) |
 | **Gallery** | 700 |
 
 Press **N** and the set turns its own pages, section by section. **H** keeps
@@ -51,10 +52,11 @@ couldn't reach them, but a keyboard can.
 
 Every source is keyless and open to browsers, because this is a static site
 with no server behind it: Wikipedia (In the news, Current events, On this
-day), Open-Meteo and the World Bank. Market
-closes are the exception: nothing serves them to a browser, so the deploy
-workflow fetches them from FRED twice each weekday and publishes them with
-the site. The breathing page is worked out on the set. When a source is late the page says how old its copy is, and
+day), Open-Meteo, ESPN's scoreboards, The Space Devs (launches), Nager.Date
+(holidays) and Where the ISS at?. Money is the exception: nothing serves it
+to a browser, so the deploy workflow fetches it from FRED twice each weekday
+and publishes it with the site. The breathing page, the timer and the dice
+are worked out on the set. When a source is late the page says how old its copy is, and
 when one fails the page says it's off air. The set never hides either.
 
 The weather needs your location. The set asks when you press red on page

@@ -35,6 +35,33 @@ export const SERIES = [
   { id: 'DCOILBRENTEU', name: 'OIL, BRENT', kind: 'dollars' },
 ]
 
+/**
+ * Page 402, "Your money" (2026-09-28): the numbers that reach a household.
+ * Weekly and monthly series, so each looks back further than the markets
+ * do. Inflation is the CPI's change over twelve months, worked out here from
+ * the index, which is how it is reported: `kind: 'yoy'` asks for that.
+ */
+export const HOUSEHOLD = [
+  { id: 'GASREGW', name: 'GAS, US AVERAGE', kind: 'gallon', days: 60 },
+  { id: 'MORTGAGE30US', name: '30-YEAR MORTGAGE', kind: 'percent', days: 60 },
+  { id: 'CPIAUCSL', name: 'INFLATION', kind: 'yoy', days: 700 },
+  { id: 'DFF', name: 'FED INTEREST RATE', kind: 'percent', days: 30 },
+  { id: 'UNRATE', name: 'UNEMPLOYMENT', kind: 'percent', days: 120 },
+]
+
+/** Twelve-month change from a monthly index's rows: the latest reading and
+ *  the one before it, each against the same month a year earlier. */
+export function yoyFromCsv(text) {
+  const rows = String(text).trim().split(/\r?\n/).slice(1).map(l => l.split(','))
+    .filter(([d, v]) => /^\d{4}-\d\d-\d\d$/.test(d) && v !== '.' && Number.isFinite(+v))
+  // Ten yearly changes need twenty-two months of the index.
+  if (rows.length < 22) throw new Error('not enough months for a yearly change')
+  const at = (i) => ({ date: rows[i][0], pct: (+rows[i][1] / +rows[i - 12][1] - 1) * 100 })
+  const last = at(rows.length - 1), prev = at(rows.length - 2)
+  const history = rows.slice(-10).map((_, k) => at(rows.length - 10 + k).pct)
+  return { date: last.date, value: last.pct, prevDate: prev.date, prev: prev.pct, history }
+}
+
 export const fredUrl = (id, from) => `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${id}&cosd=${from}`
 
 /** FRED's CSV: a header, then DATE,VALUE rows, with "." for a day with no
@@ -63,7 +90,17 @@ export async function fetchMarkets(fetchImpl = fetch, now = new Date()) {
       series.push({ ...s, ...parseFredCsv(await res.text()) })
     } catch (e) { failed.push(`${s.id}: ${e.message}`) }
   }
-  return { at: now.toISOString(), source: 'FRED, Federal Reserve Bank of St. Louis', series, failed }
+  const household = []
+  for (const s of HOUSEHOLD) {
+    try {
+      const since = new Date(now.getTime() - s.days * 864e5).toISOString().slice(0, 10)
+      const res = await fetchImpl(fredUrl(s.id, since))
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const text = await res.text()
+      household.push({ ...s, ...(s.kind === 'yoy' ? yoyFromCsv(text) : parseFredCsv(text)) })
+    } catch (e) { failed.push(`${s.id}: ${e.message}`) }
+  }
+  return { at: now.toISOString(), source: 'FRED, Federal Reserve Bank of St. Louis', series, household, failed }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -74,5 +111,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const tmp = path.join(path.dirname(out), `.markets.json.tmp-${process.pid}`)
   writeFileSync(tmp, JSON.stringify(m) + '\n')
   renameSync(tmp, out)
-  console.log(`markets.json: ${m.series.length} series, latest ${m.series.map(s => s.date).sort().at(-1)}`)
+  console.log(`markets.json: ${m.series.length} series, ${m.household.length} household, latest ${m.series.map(s => s.date).sort().at(-1)}`)
 }

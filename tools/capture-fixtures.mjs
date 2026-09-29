@@ -47,6 +47,11 @@ const steps = [
   ['open-meteo-cities.json', async () => get(F.citiesUrl('F'))],
   ['open-meteo.json', async () => get(F.forecastUrl(40.7, -74.0, 'F'))],
   ['markets.json', async () => (await import('./fetch-markets.mjs')).fetchMarkets()],
+  ...F.LEAGUES.map(([, , espn]) => [`espn-${espn.replace('/', '-')}.json`, async () => get(F.scoreboardUrl(espn))]),
+  // thespacedevs allows 15 requests an hour; one capture is one of them.
+  ['launches.json', async () => get(F.LAUNCHES_URL)],
+  ['holidays-us.json', async () => get(F.HOLIDAYS_URL)],
+  ['iss.json', async () => get(F.ISS_URL)],
 ]
 
 let failed = 0

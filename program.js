@@ -100,6 +100,10 @@ const program = {
     const q = queryParams()
     this.colourMode = Math.max(0, COLOUR_MODES.findIndex(m => m.key === saved.colourMode))
     this.game = { i: 0, score: 0, answered: null, best: saved.gameBest || 0 }
+    // The focus timer and the decider live in the set, not the page: the
+    // timer runs on while you look at other pages, and chimes wherever you are.
+    this.focus = { state: 'idle', mode: 'work', left: Pages.FOCUS_MS, endsAt: 0 }
+    this.decide = null
     this.weatherConsent = saved.weatherConsent || null
     // 190, the welcome, is where the set lands when it is switched on
     // (2026-09-28): it says what INTERVAL is and how to let it cycle. A link
@@ -256,6 +260,8 @@ const program = {
         touch: this.touch(),
         locationState: this.locationState,
         game: this.game,
+        focus: this.focus,
+        decide: this.decide,
       },
     }
   },
@@ -369,6 +375,10 @@ const program = {
     const def = Pages.pageDef(this.page, this.ctx())
     if (!def?.liveMs) { this.nextLive = Infinity; return }
     this.nextLive = now + def.liveMs
+    // A live page keeps its own sources fresh while it is up -- the ISS every
+    // ten seconds, not at the set's thirty-second round. The cache holds each
+    // to its own refresh period, so asking every tick costs nothing.
+    for (const id of def.feeds || []) this.ensureFeed(id)
     const { pages } = this.render(this.page)
     if (!pages) return
     this.pages = pages
@@ -452,6 +462,15 @@ const program = {
   cyclePages(section) {
     return Pages.SECTIONS[section].pages.map(([, n]) => n)
       .filter(n => !((n === '300' || n === '301') && this.locationState !== 'granted'))
+      // The timer and the dice wait for a key; cycling past them shows nothing.
+      .filter(n => n !== '503' && n !== '504')
+      // A league with no games this week is not worth a stop.
+      .filter(n => {
+        const lg = Pages.LEAGUE_PAGES[n]
+        if (!lg) return true
+        const games = this.feeds.get(`sport_${lg}`)?.data?.games
+        return !games || games.length > 0
+      })
   },
 
   startCycle() {
@@ -602,7 +621,45 @@ const program = {
     if (target === 'locate') { this.requestLocation(); return }
     if (target === 'sub:next') { this.stepSub(1); return }
     if (target.startsWith('game:')) { this.gameMove(target.slice(5)); return }
+    if (target.startsWith('focus:')) { this.focusMove(target.slice(6)); return }
+    if (target.startsWith('decide:')) { this.decideMove(target.slice(7)); return }
     this.request(target)
+  },
+
+  focusMove(move) {
+    const f = this.focus, now = Date.now()
+    const whole = () => (f.mode === 'break' ? Pages.BREAK_MS : Pages.FOCUS_MS)
+    if (move === 'start') {
+      if (f.state === 'run') { f.left = Math.max(0, f.endsAt - now); f.state = 'paused'; this.flash('PAUSED') }
+      else {
+        if (f.state === 'done') f.left = whole()
+        f.endsAt = now + f.left; f.state = 'run'; this.flash(f.mode === 'break' ? 'BREAK' : 'FOCUS')
+      }
+    } else if (move === 'reset') { f.state = 'idle'; f.left = whole(); this.flash('RESET') }
+    else if (move === 'mode') { f.mode = f.mode === 'break' ? 'work' : 'break'; f.state = 'idle'; f.left = whole(); this.flash(f.mode === 'break' ? 'BREAK' : 'WORK') }
+    this.reRender()
+  },
+
+  /** The timer, checked every tick on every page: when it runs out, the
+   *  chime, and the header says so wherever the viewer is. */
+  focusTick() {
+    const f = this.focus
+    if (f.state !== 'run' || Date.now() < f.endsAt) return
+    f.state = 'done'; f.left = 0
+    sfx.playChime()
+    this.flash(f.mode === 'break' ? 'BREAK UP' : "TIME'S UP")
+    announce(f.mode === 'break' ? 'The break is over.' : "Time's up. Take a break.", 'focus')
+  },
+
+  decideMove(kind) {
+    const value = kind === 'd20' ? 1 + Math.floor(Math.random() * 20) : Math.random() < 0.5 ? 1 : 0
+    this.decide = { kind, value, at: Date.now() }
+    // The result lands after the tumble; say it then, not now.
+    this.fxAfter(Pages.ROLL_MS, () => {
+      if (kind === 'd20' && value === 20) sfx.playChime(); else sfx.playPageTick()
+      announce(kind === 'd20' ? `You rolled ${value}.` : value ? 'Heads.' : 'Tails.', 'decide')
+    })
+    this.reRender()
   },
 
   gameMove(move) {
@@ -764,6 +821,7 @@ const program = {
     if (this.want && now >= this.arriveAt) this.tryArrive(now)
     if (this.page && !this.want && now >= this.nextTx) this.retransmit(now)
     if (this.page && !this.want && now >= this.nextLive) this.liveRender(now)
+    this.focusTick()
     this.cycleTick(now)
   },
 

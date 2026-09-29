@@ -39,7 +39,7 @@ test('every page renders, fits, and leaves row 0 to the set', () => {
 
 test('every fastext link goes somewhere the set can follow', () => {
   const ctx = ctxWith()
-  const special = /^(locate|sub:next|game:(\d|next|reset))$/
+  const special = /^(locate|sub:next|game:(\d|next|reset)|focus:(start|reset|mode)|decide:(d20|coin))$/
   for (const num of everyPage(ctx)) {
     for (const p of pageDef(num, ctx).render(ctx)) {
       for (const f of p.fastext) {
@@ -143,7 +143,7 @@ test('a brief is a first sentence; the same story is not told twice; a gap takes
 
 test('every page the sections cycle through exists, and each section is one magazine', () => {
   const ctx = ctxWith()
-  assert.equal(SECTIONS.length, 6)
+  assert.equal(SECTIONS.length, 7)
   for (const sec of SECTIONS) {
     for (const [label, num] of sec.pages) assert.ok(pageDef(num, ctx), `${sec.name}: ${label} ${num}`)
     assert.equal(new Set(sec.pages.map(([, n]) => n[0])).size, 1, `${sec.name} is one magazine`)
@@ -220,4 +220,34 @@ test('markets draw the last ten closes as a little bar chart', async () => {
   // 1..10 scaled to heights 1-3, two a cell: (1,2)->1 1, (3,4)->1 2,
   // (5,6)->2 2, (7,8)->2 3, (9,10)->3 3.
   assert.deepEqual(p.cells[5].slice(1, 6).map(c => c.mos), [16 | 32, 16 | 40, 20 | 40, 20 | 42, 21 | 42])
+})
+
+test('countdowns: the weekend, and how much day is left', async () => {
+  const { weekendIn, sunInfo, span } = await import('../pages.js')
+  const mon8pm = new Date(2026, 8, 28, 20, 0).getTime()
+  assert.equal(span(weekendIn(mon8pm)), '4D 4H')
+  assert.equal(weekendIn(new Date(2026, 9, 3, 12).getTime()), null, 'Saturday is the weekend')
+  assert.equal(sunInfo('06:49', '18:42', new Date(2026, 8, 28, 16, 30).getTime()), 'DAYLIGHT 11H 53M  SUNSET IN 2H 12M')
+  assert.match(sunInfo('06:49', '18:42', mon8pm), /THE SUN IS DOWN/)
+})
+
+test('sport: a page a league, live games first, starts in the viewer\'s time', async () => {
+  const { gameStatus } = await import('../pages.js')
+  const ctx = ctxWith()
+  const nfl = pageDef('601', ctx).render(ctx)
+  assert.equal(nfl.length, 1, 'sixteen games on one screen')
+  assert.match(nfl[0].lines().join('\n'), /PHI\s+7\s+CHI\s+27\s+FINAL/)
+  assert.equal(gameStatus({ state: 'in', detail: 'Q3 4:21' }).text, 'Q3 4:21')
+  assert.equal(gameStatus({ state: 'post', detail: 'FT' }).text, 'FINAL')
+  assert.match(gameStatus({ state: 'pre', date: new Date(2026, 9, 3, 19, 0).getTime() }).text, /^SAT 7:00PM$/)
+})
+
+test('coming up and the ISS draw from their sources', () => {
+  const ctx = ctxWith()
+  const c = pageDef('203', ctx).render(ctx)[0].lines().join('\n')
+  assert.match(c, /Columbus Day \/ Indigenous Peoples' Day/)
+  assert.match(c, /Crew-13/)
+  const iss = pageDef('204', ctx).render(ctx)[0].lines().join('\n')
+  assert.match(iss, /OVER 21\.4N 109\.7W/)
+  assert.match(iss, /MPH, 260 MILES UP/)
 })

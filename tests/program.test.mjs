@@ -218,8 +218,8 @@ test('H while cycling holds the section; H again moves on', async () => {
   h.key('h')
   assert.ok(h.program.cycle.holdSection)
   const seen = new Set()
-  for (let i = 0; i < 30; i++) { await h.settle(5000, 500); seen.add(h.program.page) }
-  assert.deepEqual([...seen].sort(), ['200', '201', '202'], 'round TODAY and nowhere else')
+  for (let i = 0; i < 40; i++) { await h.settle(5000, 500); seen.add(h.program.page) }
+  assert.deepEqual([...seen].sort(), ['200', '201', '202', '203', '204'], 'round TODAY and nowhere else')
   assert.match(h.row(24), /HOLDING\s+TODAY\s+H MOVES ON/)
   h.key('h')
   for (let i = 0; i < 20 && Pages.sectionOf(h.program.page) === 1; i++) await h.settle(5000, 500)
@@ -364,5 +364,57 @@ test('the arrival tick only for a page keyed, and the chime only at switch-on', 
   assert.equal(h.program.page, '190', 'and goes straight to its page, no ident')
   h.key('1'); h.key('0'); h.key('1')
   assert.equal(h.program.quiet, false)
+  h.shutdown()
+})
+
+test('focus: red starts and pauses, the timer runs on other pages, and chimes when done', async () => {
+  const h = await boot()
+  await h.go('503', 2000)
+  h.key('F1')
+  assert.equal(h.program.focus.state, 'run')
+  await h.go('101', 2000)
+  await h.settle(25 * 60000, 30000)
+  assert.equal(h.program.focus.state, 'done')
+  assert.match(h.row(0), /TIME'S UP|INTERVAL/)
+  assert.ok(h.announced.some(s => /Time's up/.test(s)))
+  await h.go('503', 2000)
+  h.key('F3')
+  assert.equal(h.program.focus.mode, 'break')
+  h.key('F1'); h.advance(10000); h.key('F1')
+  assert.equal(h.program.focus.state, 'paused')
+  assert.ok(h.program.focus.left < 5 * 60000 && h.program.focus.left > 4 * 60000)
+  h.shutdown()
+})
+
+test('decide: the die tumbles, then lands on 1-20; the coin lands on heads or tails', async () => {
+  const h = await boot()
+  await h.go('504', 2000)
+  h.key('F1')
+  const v = h.program.decide.value
+  assert.ok(v >= 1 && v <= 20)
+  h.advance(1200)
+  assert.ok(h.announced.some(s => s === `You rolled ${v}.`))
+  h.key('F2'); h.advance(1200)
+  assert.ok(h.announced.some(s => s === 'Heads.' || s === 'Tails.'))
+  h.shutdown()
+})
+
+test('cycling skips the timer, the dice, and a league with no games', async () => {
+  const h = await boot()
+  const pause = h.program.cyclePages(5)
+  assert.ok(!pause.includes('503') && !pause.includes('504'))
+  assert.ok(pause.includes('502'))
+  h.program.feeds.entries.get('sport_nba').data = { games: [] }
+  h.program.feeds.entries.get('sport_nba').key = 'live'
+  assert.ok(!h.program.cyclePages(4).includes('602'))
+  h.shutdown()
+})
+
+test('402 reads the household numbers out of markets.json, through the parser', async () => {
+  const h = await boot()
+  await h.go('402', 3000)
+  assert.ok(h.find('GAS, US AVERAGE'), h.page())
+  assert.ok(h.find('INFLATION'))
+  assert.ok(!h.find('not in the last build'))
   h.shutdown()
 })

@@ -46,7 +46,7 @@ const {
   BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, COLS,
 } = await import(`./teletext.js?v=${V}`)
 const { KEYS, FASTEXT_ALT } = await import(`./constants.js?v=${V}`)
-const { FEEDS, staleAfter } = await import(`./feeds.js?v=${V}`)
+const { FEEDS, staleAfter, LEAGUES } = await import(`./feeds.js?v=${V}`)
 const { drawLines } = await import(`./markup.js?v=${V}`)
 const Pic = await import(`./pictures.js?v=${V}`)
 
@@ -64,7 +64,7 @@ export const MAGAZINES = {
   3: { name: 'WEATHER', band: BLUE, ink: CYAN, accent: YELLOW },
   4: { name: 'MONEY', band: YELLOW, ink: BLUE, accent: RED },
   5: { name: 'PAUSE', band: CYAN, ink: BLUE, accent: BLUE },
-  6: { name: 'SPARE', band: GREEN, ink: BLACK, accent: BLACK },
+  6: { name: 'SPORT', band: GREEN, ink: BLACK, accent: BLACK },
   7: { name: 'GALLERY', band: WHITE, ink: BLUE, accent: RED },
   8: { name: 'SERVICE', band: BLUE, ink: WHITE, accent: YELLOW },
 }
@@ -76,10 +76,11 @@ export const MAGAZINES = {
  */
 export const SECTIONS = [
   { name: 'NEWS', pages: [['HEADLINES', '101'], ['FACTS', '102']] },
-  { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201'], ['CLOCK', '202']] },
+  { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201'], ['CLOCK', '202'], ['COMING UP', '203'], ['ISS NOW', '204']] },
   { name: 'WEATHER', pages: [['TODAY', '300'], ['5-DAY', '301'], ['US CITIES', '302']] },
-  { name: 'MONEY', pages: [['MARKETS', '401']] },
-  { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501'], ['AQUARIUM', '502']] },
+  { name: 'MONEY', pages: [['MARKETS', '401'], ['YOUR MONEY', '402']] },
+  { name: 'SPORT', pages: [['NFL', '601'], ['NBA', '602'], ['MLB', '603'], ['NHL', '604'], ['SOCCER', '605'], ['COLLEGE', '606']] },
+  { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501'], ['AQUARIUM', '502'], ['FOCUS', '503'], ['DECIDE', '504']] },
   { name: 'GALLERY', pages: [['PICTURES', '700']] },
 ]
 export const sectionOf = (num) => SECTIONS.findIndex(s => s.pages.some(([, n]) => n === String(num).toUpperCase()))
@@ -545,6 +546,18 @@ page('201', 'Born today', {
   },
 })
 
+/** "DAYLIGHT 11H 53M  SUNSET IN 2H 13M": the day's length and what is
+ *  left of it, from the forecast's "HH:MM" local times. */
+export function sunInfo(rise, set, nowMs) {
+  const toMin = (t) => { const m = /^(\d\d):(\d\d)$/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : null }
+  const a = toMin(rise), b = toMin(set)
+  if (a === null || b === null || b <= a) return null
+  const d = new Date(nowMs), now = d.getHours() * 60 + d.getMinutes()
+  const len = `DAYLIGHT ${Math.floor((b - a) / 60)}H ${pad2((b - a) % 60)}M`
+  const until = now < a ? `  SUNRISE IN ${span((a - now) * 60000)}` : now < b ? `  SUNSET IN ${span((b - now) * 60000)}` : '  THE SUN IS DOWN'
+  return len + until
+}
+
 /** Weather pages share a front door: no location yet, and why. */
 function weatherGate(num, title, ctx, fn) {
   const loc = ctx.env.locationState
@@ -596,6 +609,9 @@ page('300', 'Weather: today', {
       if (today) {
         p.text(r, 1, `SUNRISE ${today.sunrise ?? '--:--'}   SUNSET ${today.sunset ?? '--:--'}`, WHITE)
         p.text(r + 1, 1, `HIGH ${today.hi}${w.units}   LOW ${today.lo}${w.units}`, YELLOW)
+        // How long the day is, and how long is left of it (2026-09-28).
+        const sun = sunInfo(today.sunrise, today.sunset, ctx.now)
+        if (sun) p.text(r + 2, 1, sun, CYAN)
       }
       p.text(22, 1, '% IS THE CHANCE OF RAIN', MAGENTA)
       creditLine(p, ctx, 'weather')
@@ -698,6 +714,89 @@ page('202', 'Clock', {
   },
 })
 
+
+/** "3H 12M", "2D 4H", "45M": a span, the two largest units. */
+export function span(ms) {
+  const m = Math.max(0, Math.floor(ms / 60000)), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60), mm = m % 60
+  return d ? `${d}D ${h}H` : h ? `${h}H ${mm}M` : `${mm}M`
+}
+/** "02:11:04" under a day. */
+const hms = (ms) => { const t = Math.max(0, Math.floor(ms / 1000)); return `${pad2(Math.floor(t / 3600))}:${pad2(Math.floor(t % 3600 / 60))}:${pad2(t % 60)}` }
+/** A ticking countdown: "4D 03:32:58", "03:32:58" under a day. The first
+ *  cut showed hours up to 99 ("99:32:58" on a Monday evening), which reads
+ *  as a clock, not as four days. Past 99 days, `span` (never ticks). */
+export const countdown = (ms) => ms < 864e5 ? hms(ms) : ms < 100 * 864e5 ? `${Math.floor(ms / 864e5)}D ${hms(ms % 864e5)}` : span(ms)
+/** The start of next Saturday, local time; null when it is the weekend. */
+export function weekendIn(nowMs) {
+  const d = new Date(nowMs), day = d.getDay()
+  if (day === 0 || day === 6) return null
+  const sat = new Date(d.getFullYear(), d.getMonth(), d.getDate() + (6 - day))
+  return sat.getTime() - nowMs
+}
+
+/**
+ * Coming up (2026-09-28): three countdowns that tick -- the weekend, the next
+ * public holiday, the next rocket launch, with a rocket on its pad that
+ * lights in the last minute. A page to hold on a Friday afternoon.
+ */
+page('203', 'Coming up', {
+  feeds: ['holidays', 'launches'],
+  liveMs: 1000,
+  render(ctx) {
+    const p = new Page()
+    masthead(p, '203', 'COMING UP', { right: 'COUNTDOWNS' })
+    const wk = weekendIn(ctx.now)
+    p.text(BODY_TOP, 1, 'THE WEEKEND', YELLOW)
+    if (wk === null) p.double(BODY_TOP + 1, 1, "IT'S THE WEEKEND", GREEN)
+    else p.double(BODY_TOP + 1, 1, countdown(wk), WHITE)
+    const hol = (ctx.entry('holidays')?.data?.holidays || []).find(h => Date.parse(`${h.date}T23:59`) > ctx.now)
+    p.text(BODY_TOP + 4, 1, 'NEXT HOLIDAY', YELLOW)
+    if (hol) {
+      const days = Math.max(0, Math.ceil((new Date(`${hol.date}T00:00`).getTime() - ctx.now) / 864e5))
+      p.text(BODY_TOP + 5, 1, clip(hol.names.join(' / '), 38), WHITE)
+      p.text(BODY_TOP + 6, 1, `${shortDay(hol.date)}  ${days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `IN ${days} DAYS`}`, CYAN)
+    } else p.text(BODY_TOP + 5, 1, 'WAITING FOR THE CALENDAR', CYAN)
+    const next = (ctx.entry('launches')?.data?.launches || []).find(l => l.net > ctx.now - 60000)
+    p.text(BODY_TOP + 9, 1, 'NEXT ROCKET LAUNCH', YELLOW)
+    if (next) {
+      const t = next.net - ctx.now
+      p.double(BODY_TOP + 10, 1, t <= 0 ? 'LIFTOFF' : `T-${countdown(t)}`, t < 3600e3 ? GREEN : WHITE)
+      p.text(BODY_TOP + 12, 1, clip(next.mission || next.vehicle, 30), WHITE)
+      p.text(BODY_TOP + 13, 1, clip(next.vehicle, 30), CYAN)
+      p.text(BODY_TOP + 14, 1, clip(`${next.provider}, ${next.where}`, 30), CYAN)
+      if (next.status && next.status !== 'Go') p.text(BODY_TOP + 15, 1, `STATUS: ${next.status.toUpperCase()}`, MAGENTA)
+      p.art(BODY_TOP + 9, 33, Pic.rocketPixels(ctx.now, t < 60000), { R: RED, W: WHITE, C: CYAN, Y: YELLOW })
+    } else p.text(BODY_TOP + 10, 1, 'WAITING FOR THE SCHEDULE', CYAN)
+    p.fast([['CLOCK', '202'], ['ISS', '204'], ['NEWS', '101'], ['INDEX', '100']])
+    return [p]
+  },
+})
+
+/**
+ * Where the ISS is, right now (2026-09-28): the world in block graphics with
+ * the station's dot on it, refreshed every ten seconds. At 27,600 km/h it
+ * crosses the map in about 45 minutes, so the dot visibly moves.
+ */
+page('204', 'The ISS, now', {
+  feeds: ['iss'],
+  liveMs: 1000,
+  cycleMs: 20000,
+  render(ctx) {
+    return gate(ctx, '204', 'ISS NOW', ['iss'], ({ iss }) => {
+      const p = new Page()
+      masthead(p, '204', 'ISS NOW', { right: 'LIVE' })
+      p.art(BODY_TOP - 1, 0, Pic.issPixels(iss.lat, iss.lon, ctx.now), { G: GREEN, Y: YELLOW, W: WHITE }, () => BLUE)
+      const ns = `${Math.abs(iss.lat).toFixed(1)}${iss.lat >= 0 ? 'N' : 'S'}`, ew = `${Math.abs(iss.lon).toFixed(1)}${iss.lon >= 0 ? 'E' : 'W'}`
+      p.text(19, 1, `OVER ${ns} ${ew}`, YELLOW)
+      p.text(19, 22, iss.sunlit ? 'IN SUNLIGHT' : "IN EARTH'S SHADOW", iss.sunlit ? YELLOW : CYAN)
+      p.text(20, 1, `${Math.round(iss.kmh * 0.621371).toLocaleString('en-US')} MPH, ${Math.round(iss.alt * 0.621371)} MILES UP`, WHITE)
+      creditLine(p, ctx, 'iss')
+      p.fast([['COMING', '203'], ['CLOCK', '202'], ['NEWS', '101'], ['INDEX', '100']])
+      return [p]
+    })
+  },
+})
+
 // ---------------------------------------------------------------------------
 // Money: the world's numbers at a glance. No crypto (2026-09-28, by choice),
 // and no stock indices: nothing that serves them is open to a browser
@@ -763,6 +862,94 @@ page('401', 'World markets', {
     })
   },
 })
+
+/**
+ * Your money (2026-09-28): the numbers that reach a household -- gas, a
+ * mortgage, prices, the Fed's rate, jobs -- each against its last reading.
+ * Built by the deploy workflow from FRED with the markets (fetch-markets.mjs
+ * HOUSEHOLD); weekly and monthly, so each row says when.
+ */
+page('402', 'Your money', {
+  feeds: ['markets'],
+  render(ctx) {
+    return gate(ctx, '402', 'YOUR MONEY', ['markets'], ({ markets }) => {
+      const p = new Page()
+      masthead(p, '402', 'YOUR MONEY', { right: 'HOUSEHOLD' })
+      let r = BODY_TOP
+      for (const s of markets.household || []) {
+        const value = s.kind === 'gallon' ? `$${s.value.toFixed(2)}` : `${s.value.toFixed(s.kind === 'yoy' ? 1 : 2)}%`
+        p.text(r, 1, s.name, YELLOW)
+        p.double(r + 1, 1, value, WHITE)
+        const m = move(s.value, s.prev)
+        // Up is bad news for every one of these, so up is red.
+        if (m) { const c = m.up === null ? WHITE : m.up ? RED : GREEN; p.text(r + 1, 14, m.mark, c); p.text(r + 1, 16, s.kind === 'gallon' ? `${(s.value - s.prev) >= 0 ? '+' : '-'}$${Math.abs(s.value - s.prev).toFixed(2)}` : `${(s.value - s.prev) >= 0 ? '+' : '-'}${Math.abs(s.value - s.prev).toFixed(2)}`, c) }
+        const when = s.kind === 'yoy' || s.id === 'UNRATE' ? `${MONTH_NAMES[+s.date.slice(5, 7) - 1].slice(0, 3)} ${s.date.slice(0, 4)}` : shortDay(s.date)
+        p.text(r + 1, 30, when.padStart(9), CYAN)
+        if (s.history?.length > 1) sparkline(p, r + 2, 30, s.history, s.value > s.history[0] ? RED : GREEN)
+        r += 3
+      }
+      if (!(markets.household || []).length) p.wrap(BODY_TOP, 1, 'The household numbers were not in the last build. They come back with the next.', 38, CYAN)
+      creditLine(p, ctx, 'markets')
+      p.fast([['MARKETS', '401'], ['WEATHER', '302'], ['NEWS', '101'], ['INDEX', '100']])
+      return [p]
+    })
+  },
+})
+
+// ---------------------------------------------------------------------------
+// Sport (2026-09-28): this week's games, a page a league, from ESPN's
+// scoreboards. Refreshed every minute while a game is on (feeds.js).
+// ---------------------------------------------------------------------------
+
+/** A game's status, as the row shows it: the clock while it is on, the
+ *  start in the viewer's own time before, FINAL after. */
+export function gameStatus(g) {
+  if (g.state === 'in') return { text: g.detail.toUpperCase(), fg: GREEN }
+  if (g.state === 'post') return { text: /FT|final/i.test(g.detail) ? (g.detail.replace(/^FT$/, 'FINAL').toUpperCase()) : g.detail.toUpperCase(), fg: WHITE }
+  const d = new Date(g.date)
+  const day = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(' ', '').toUpperCase()
+  return { text: `${day} ${time}`, fg: CYAN }
+}
+const GAME_ORDER = { in: 0, pre: 1, post: 2 }
+/** Page number -> league key, for cycling to skip a league with no games. */
+export const LEAGUE_PAGES = Object.fromEntries(LEAGUES.map(([key, , , num]) => [num, key]))
+for (const [key, name, , num] of LEAGUES) {
+  page(num, `Sport: ${name}`, {
+    feeds: [`sport_${key}`],
+    subpageMs: 12000,
+    render(ctx) {
+      return gate(ctx, num, name, [`sport_${key}`], (data) => {
+        const games = data[`sport_${key}`].games.slice()
+          .sort((a, b) => GAME_ORDER[a.state] - GAME_ORDER[b.state] || (a.state === 'post' ? b.date - a.date : a.date - b.date))
+        const per = 16
+        const chunks = []
+        for (let i = 0; i < Math.max(1, games.length); i += per) chunks.push(games.slice(i, i + per))
+        return chunks.map((chunk, i) => {
+          const p = new Page()
+          masthead(p, num, clip(name, 22), { sub: i, subs: chunks.length, right: 'SPORT' })
+          if (!games.length) p.wrap(BODY_TOP + 1, 1, 'No games this week.', 38, CYAN)
+          else { p.text(BODY_TOP, 1, 'AWAY', CYAN); p.text(BODY_TOP, 11, 'HOME', CYAN) }
+          chunk.forEach((g, k) => {
+            const r = BODY_TOP + 2 + k
+            const st = gameStatus(g)
+            const post = g.state === 'post'
+            p.text(r, 1, clip(g.away.abbr, 4), post && g.away.winner ? YELLOW : WHITE)
+            if (g.state !== 'pre') p.text(r, 6, String(g.away.score).padStart(3), post && g.away.winner ? YELLOW : WHITE)
+            p.text(r, 11, clip(g.home.abbr, 4), post && g.home.winner ? YELLOW : WHITE)
+            if (g.state !== 'pre') p.text(r, 16, String(g.home.score).padStart(3), post && g.home.winner ? YELLOW : WHITE)
+            p.text(r, 22, clip(st.text, 17), st.fg)
+          })
+          if (games.some(g => g.state === 'in')) p.text(21, 1, 'LIVE: SCORES UPDATE EVERY MINUTE', GREEN)
+          creditLine(p, ctx, `sport_${key}`)
+          const i2 = LEAGUES.findIndex(l => l[0] === key)
+          p.fast([['NEXT', LEAGUES[(i2 + 1) % LEAGUES.length][3]], ['NEWS', '101'], ['WEATHER', '302'], ['INDEX', '100']])
+          return p
+        })
+      })
+    },
+  })
+}
 
 // ---------------------------------------------------------------------------
 // Pause (2026-09-28): the mindful section. Worked out on the set or written
@@ -850,6 +1037,71 @@ page('502', 'Aquarium', {
     p.art(4, 0, Pic.aquariumPixels(ctx.now), { Y: YELLOW, M: MAGENTA, R: RED, W: WHITE, G: GREEN, C: CYAN }, () => BLUE)
     p.text(22, 1, 'NOTHING TO READ HERE. WATCH THE FISH.', GREEN)
     p.fast([['BREATHE', '500'], ['THOUGHT', '501'], ['GALLERY', '700'], ['INDEX', '100']])
+    return [p]
+  },
+})
+
+/**
+ * Focus (2026-09-28): a work timer -- twenty-five minutes, or a five-minute
+ * break -- in big digits, started and stopped with the coloured keys. The
+ * timer lives in the set (program.js), so it keeps running on other pages
+ * and the chime comes wherever you are. The page to hold while working.
+ */
+export const FOCUS_MS = 25 * 60000, BREAK_MS = 5 * 60000
+page('503', 'Focus timer', {
+  liveMs: 250,
+  render(ctx) {
+    const f = ctx.env.focus || { state: 'idle', mode: 'work', left: FOCUS_MS }
+    const p = new Page()
+    masthead(p, '503', 'FOCUS', { right: f.mode === 'break' ? 'BREAK' : 'WORK' })
+    const left = f.state === 'run' ? Math.max(0, f.endsAt - ctx.now) : f.left
+    const whole = f.mode === 'break' ? BREAK_MS : FOCUS_MS
+    const secs = Math.ceil(left / 1000)
+    const text = `${pad2(Math.floor(secs / 60))}:${pad2(secs % 60)}`
+    const px = Pic.clockPixels(text, f.state === 'done' ? 'G' : f.mode === 'break' ? 'C' : 'Y')
+    p.art(BODY_TOP + 2, Math.floor((COLS - Math.ceil(px[0].length / 2)) / 2), px, { Y: YELLOW, C: CYAN, G: GREEN })
+    // How far through, as a bar of blocks across the page.
+    const done = Math.round((1 - left / whole) * 76)
+    p.bar(BODY_TOP + 9, 1, Math.max(0, done), f.mode === 'break' ? CYAN : YELLOW)
+    const say = { idle: f.mode === 'break' ? 'A FIVE-MINUTE BREAK. RED STARTS IT.' : 'TWENTY-FIVE MINUTES. RED STARTS IT.', run: f.mode === 'break' ? 'BREAK. BACK SOON.' : 'FOCUSING. RED PAUSES.', paused: 'PAUSED. RED CARRIES ON.', done: f.mode === 'break' ? 'BREAK OVER.' : "TIME'S UP. TAKE A BREAK." }[f.state]
+    if (f.state === 'done') p.flashing(BODY_TOP + 12, Math.floor((COLS - say.length) / 2), say, GREEN)
+    else p.text(BODY_TOP + 12, Math.floor((COLS - say.length) / 2), say, WHITE)
+    p.text(BODY_TOP + 15, 1, 'THE TIMER KEEPS GOING ON OTHER PAGES.', CYAN)
+    p.fast([[f.state === 'run' ? 'PAUSE' : 'START', 'focus:start'], ['RESET', 'focus:reset'], [f.mode === 'break' ? 'WORK' : 'BREAK', 'focus:mode'], ['INDEX', '100']])
+    return [p]
+  },
+})
+
+/**
+ * Decide for me (2026-09-28): roll a d20 or flip a coin on a coloured key.
+ * The result tumbles for most of a second before it lands.
+ */
+export const ROLL_MS = 900
+page('504', 'Decide for me', {
+  liveMs: 70,
+  render(ctx) {
+    const d = ctx.env.decide
+    const p = new Page()
+    masthead(p, '504', 'DECIDE', { right: 'FOR ME' })
+    const tumbling = d && ctx.now - d.at < ROLL_MS
+    if (!d) {
+      p.wrap(BODY_TOP + 3, 1, 'Can not choose? Red rolls a twenty-sided die. Green flips a coin.', 38, WHITE)
+    } else if (d.kind === 'd20') {
+      const n = tumbling ? 1 + Math.floor(Pic.hash3(Math.floor(ctx.now / 60), 3, 9) * 20) : d.value
+      const px = Pic.clockPixels(String(n), tumbling ? 'W' : n === 20 ? 'G' : n === 1 ? 'R' : 'Y')
+      p.text(BODY_TOP, 1, 'D20', CYAN)
+      p.art(BODY_TOP + 2, Math.floor((COLS - Math.ceil(px[0].length / 2)) / 2), px, { W: WHITE, G: GREEN, R: RED, Y: YELLOW })
+      if (!tumbling) {
+        const say = n === 20 ? 'NATURAL TWENTY!' : n === 1 ? 'CRITICAL FAIL' : n >= 15 ? 'GOOD ROLL' : n <= 5 ? 'OUCH' : ''
+        if (say) p.double(BODY_TOP + 9, Math.floor((COLS - say.length) / 2), say, n === 20 ? GREEN : n === 1 ? RED : WHITE)
+      }
+    } else {
+      const spin = tumbling ? (ctx.now - d.at) / ROLL_MS : 0
+      p.text(BODY_TOP, 1, 'COIN', CYAN)
+      p.art(BODY_TOP + 2, 15, Pic.coinPixels(spin), { Y: YELLOW, W: WHITE })
+      if (!tumbling) { const say = d.value ? 'HEADS' : 'TAILS'; p.double(BODY_TOP + 8, Math.floor((COLS - say.length) / 2), say, YELLOW) }
+    }
+    p.fast([['D20', 'decide:d20'], ['FLIP', 'decide:coin'], ['PAUSE', '500'], ['INDEX', '100']])
     return [p]
   },
 })

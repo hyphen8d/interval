@@ -146,3 +146,49 @@ test('US cities: twelve, in the order asked, units from the answer', () => {
   assert.ok(c.cities.every(x => Number.isFinite(x.temp) && Number.isFinite(x.hi)))
   assert.throws(() => parseCities([{}]), /asked for 12/)
 })
+
+test('scoreboards: both teams, scores, and where the game is', async () => {
+  const { parseScoreboard, anyLive } = await import('../feeds.js')
+  const nfl = parseScoreboard(fx('espn-football-nfl.json'))
+  assert.equal(nfl.games.length, 16)
+  const g = nfl.games[0]
+  assert.deepEqual([g.away.abbr, g.away.score, g.home.abbr, g.home.score, g.state], ['PHI', '7', 'CHI', '27', 'post'])
+  assert.ok(g.home.winner && !g.away.winner)
+  assert.equal(anyLive(nfl), false)
+  assert.equal(anyLive({ games: [{ state: 'in' }] }), true)
+})
+
+test('a live game makes its scoreboard refresh every minute', async () => {
+  const { FeedCache, FEEDS } = await import('../feeds.js')
+  let loads = 0, now = 0, live = true
+  const cache = new FeedCache({ fetch: null, now: () => now, env: {}, feeds: { s: { ...FEEDS.sport_nfl, load: async () => { loads++; return { games: [{ state: live ? 'in' : 'post' }] } } } } })
+  await cache.ensure('s')
+  now = 61000; await cache.ensure('s')
+  assert.equal(loads, 2, 'live: again after a minute')
+  live = false
+  now = 130000; await cache.ensure('s')
+  now = 200000; await cache.ensure('s')
+  assert.equal(loads, 3, 'over: back to fifteen minutes')
+})
+
+test('launches, holidays and the ISS', async () => {
+  const { parseLaunches, parseHolidays, parseIss } = await import('../feeds.js')
+  const l = parseLaunches(fx('launches.json')).launches
+  assert.equal(l[1].mission, 'Crew-13')
+  assert.ok(l.every((x, i) => !i || x.net >= l[i - 1].net))
+  const h = parseHolidays(fx('holidays-us.json')).holidays
+  assert.deepEqual(h[0].names, ['Columbus Day', "Indigenous Peoples' Day"], 'one Monday, two names')
+  const iss = parseIss(fx('iss.json'))
+  assert.ok(Math.abs(iss.lat) < 52 && iss.kmh > 27000 && iss.sunlit === false)
+})
+
+test('household money: inflation is a twelve-month change worked out from the index', async () => {
+  const { yoyFromCsv } = await import('../tools/fetch-markets.mjs')
+  const rows = ['observation_date,CPI', ...Array.from({ length: 24 }, (_, i) => `20${24 + Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, '0')}-01,${100 + i}`)]
+  const r = yoyFromCsv(rows.join('\n'))
+  assert.equal(r.date, '2025-12-01')
+  assert.ok(Math.abs(r.value - (123 / 111 - 1) * 100) < 1e-9)
+  assert.equal(r.history.length, 10)
+  const m = fx('markets.json')
+  assert.deepEqual(m.household.map(s => s.id), ['GASREGW', 'MORTGAGE30US', 'CPIAUCSL', 'DFF', 'UNRATE'])
+})

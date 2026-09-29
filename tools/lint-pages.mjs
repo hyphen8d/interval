@@ -34,7 +34,7 @@ export const THOUGHT_MAX = 240
 export const FACT_MAX = 160
 export const FACT_TAGS = ['TECH', 'GAMES', 'HACKING']
 
-const SPECIAL = /^(locate|sub:next|game:(\d|next|reset))$/
+const SPECIAL = /^(locate|sub:next|game:(\d|next|reset)|focus:(start|reset|mode)|decide:(d20|coin))$/
 
 /**
  * @param {object} [o]

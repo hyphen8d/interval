@@ -107,8 +107,9 @@ rebuilt.
   (noise, snow, beam width, roll): SIGNAL's tuning distance, as reception. It
   comes from the weather at the viewer's location (storms and rain), rare
   interference bursts, or `?rx=`.
-- **The seven sections** are `pages.js` `SECTIONS`: news, today, weather,
-  money, pause, quiz and gallery, each a single magazine. The index is drawn
+- **The seven sections** are `pages.js` `SECTIONS`: news (101-102), today
+  (200-204), weather (300-302), money (401-402), sport (601-606), pause
+  (500-504) and gallery (700), each a single magazine. The index is drawn
   from the same list, and so is cycling.
 - **Cycling is manual.** N starts it; the set never cycles by itself (a test
   holds that). It shows every page of a section, then the next section, round
@@ -117,7 +118,9 @@ rebuilt.
   holds the *section*; otherwise H holds the page. Keying a page, or a coloured
   key, stops it. While it runs, row 24 is a strip ("CYCLING NEWS  H HOLDS  N
   STOPS") and the coloured keys are hidden. The weather pages that would only
-  ask for a location are skipped until the set has one. There is no music;
+  ask for a location are skipped until the set has one, and so are the focus
+  timer and the decider (503, 504: pages you use, not watch) and a league
+  with no games this week (`cyclePages`). There is no music;
   the SIGNAL-station soundtrack went with the overnight mode it came from.
 - **Switching on** (2026-09-28): a bright line that widens and opens (the
   tube warming), then the INTERVAL ident assembling in block letters to a
@@ -138,6 +141,31 @@ rebuilt.
   three colours broke into fragments, because a cell holds one; two work.
   `cycleMs` overrides how long cycling stays on a page (breathe 32s,
   aquarium 24s).
+- **Pages you hold** (2026-09-28, the owner's ask: "pages people hold
+  because they are useful"). **503 Focus**: a 25/5-minute timer on the
+  fastext keys (START/PAUSE, RESET, BREAK/WORK). It lives on the program
+  (`this.focus`, `focusTick`), not the page, so it keeps running on other
+  pages, and when it ends it chimes, says so in the header and announces it.
+  **504 Decide**: red rolls a d20, green flips a coin; the result is fixed
+  when the key is pressed and the tumble (`ROLL_MS`) is only a show of it.
+  **203 Coming up** ticks three countdowns (the weekend, the next US holiday
+  from nager.date, the next launch from thespacedevs). `countdown()` shows
+  "4D 03:32:58": the first cut counted hours to 99, and "99:32:58" read as a
+  clock. **204 ISS now** is the station on a 5-degree world map
+  (`pictures.js` `LAND`), redrawn every 5s. **300** carries a sunrise/sunset
+  line (`sunInfo`). **402 Your money** is gas, the 30-year mortgage,
+  inflation, the Fed rate and unemployment, from the same `markets.json`
+  (`household`); up is red on every row, since up is bad news for all five.
+- **Sport** (601-606: NFL, NBA, MLB, NHL, Premier League, college football)
+  is one scoreboard page per league from ESPN's `site.api.espn.com`, which is
+  **unofficial and undocumented** and could change without notice; the
+  capture is the only spec (`tests/fixtures/espn-*.json`). A scoreboard with
+  a game in progress refreshes every minute (`liveRefreshMs` + `isLive` on the
+  feed), otherwise every 15. **ESPN refuses headless Chrome** with a 403 (bot
+  screening on the `HeadlessChrome` user agent and client hints) while
+  answering a real browser and curl; checked 2026-09-28 from the Pages origin
+  in a real Chrome, all six answered. `tools/shoot.mjs` overrides the UA for
+  that reason, so a headless OFF AIR is the capture tool, not the site.
 - **Trimmed 2026-09-28:** the sky, space weather, earthquakes, currencies and
   the quiz pages. The quiz content stays in `editorial.json`. On this day and
   Born today are six screens each (`pickEvenly`). 302 is twelve US cities in
@@ -208,9 +236,12 @@ publishes `markets.json` beside the site. Page 401 reads it like any feed,
 shows each row's own close date, and says so if the file hasn't been rebuilt
 in three days. `check-feeds` probes the live copy, so a stopped schedule shows
 up as a failing source. `markets.json` is gitignored: run `npm run markets`
-for a local copy. Currencies are the ECB's daily rates via Frankfurter, with
-the previous working day for ▲▼. "The world" is the World Bank's five world
-figures, with the population grown to this second. **Did you know** (102) is a
+for a local copy. The same run builds 402's `household` series; inflation is
+worked out from the CPI index as a twelve-month change (`yoyFromCsv`, which
+needs 22 months of rows). `parseMarkets` must carry `household` through:
+the first cut dropped it and 402 said "not in the last build" against a
+build that had it, since its page tests read around the parser.
+**Did you know** (102) is a
 curated list of short tech, gaming and hacking facts in `editorial.json`,
 eight a day, a different eight each day. Wikipedia's own DYK was too deep and
 can't be steered to a subject. **Pause** is local or editorial.
@@ -225,7 +256,7 @@ capture actually says, and read the diff first: a changed shape is the finding.
 `tools/check-feeds.mjs` runs each live source through the **same parser the
 set uses**, so "ok" means the page could be drawn. It also fails a source
 that answers without `access-control-allow-origin` (a browser would refuse
-it), an empty one, and a K-index more than 12h old. `tools/feed-health.json`
+it) and an empty one. `tools/feed-health.json`
 keeps the record (committed); `strikes` counts consecutive failures.
 `tools/feed-watch.mjs` notifies only at 2 strikes, so a finding has to be
 seen twice (SIGNAL's watch cried wolf for five days before it learned

@@ -233,3 +233,70 @@ export function weatherKind(code) {
   if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return 'rain'
   return null
 }
+
+// ---------------------------------------------------------------------------
+// The world, for the ISS page: land by 5-degree cell, drawn from memory of
+// an equirectangular map. It is a map for a dot to move across, not an
+// atlas: continents are where they are, coastlines are approximate.
+// ---------------------------------------------------------------------------
+
+/** Rows of 5 degrees from 90N; each row lists [from, to] columns of land,
+ *  where column c is longitude -180 + 5c. */
+const LAND = [
+  [], [[22, 32]], [[21, 33], [44, 50], [58, 64]], [[8, 16], [21, 32], [42, 70]],
+  [[2, 16], [20, 23], [25, 31], [37, 42], [42, 71]], [[2, 17], [20, 30], [36, 42], [43, 68]],
+  [[1, 16], [20, 26], [26, 28], [34, 35], [37, 42], [44, 67]], [[8, 18], [20, 25], [34, 35], [36, 66]],
+  [[11, 23], [35, 64]], [[11, 22], [35, 45], [46, 63]], [[11, 22], [34, 44], [46, 62], [64, 65]],
+  [[12, 21], [33, 44], [45, 50], [51, 61], [64, 64]], [[12, 20], [33, 48], [49, 54], [55, 60]],
+  [[13, 18], [33, 48], [50, 53], [55, 58]], [[16, 19], [33, 47], [50, 53], [55, 58]],
+  [[18, 20], [33, 46], [51, 52], [56, 57]], [[20, 26], [34, 46], [57, 58]],
+  [[20, 28], [38, 45], [55, 60], [62, 64]], [[20, 29], [38, 44], [55, 57], [59, 64]],
+  [[20, 29], [38, 44], [61, 64]], [[21, 29], [38, 44], [62, 63]], [[22, 28], [39, 43], [45, 45], [59, 66]],
+  [[22, 27], [39, 43], [45, 46], [58, 66]], [[22, 26], [39, 42], [45, 45], [58, 66]],
+  [[22, 25], [39, 42], [58, 65]], [[22, 24], [40, 41], [60, 65], [70, 70]], [[22, 24], [64, 65], [70, 70]],
+  // Antarctica as a thin shelf: the first cut filled 70-90S solid, which
+  // read as a green floor under the map, and the station never goes past 52S.
+  [[22, 23]], [[22, 23]], [], [], [], [], [], [], [[0, 71]],
+]
+export function isLand(lat, lon) {
+  const r = Math.floor((90 - lat) / 5), c = Math.floor((((lon + 180) % 360) + 360) % 360 / 5)
+  return (LAND[r] || []).some(([a, b]) => c >= a && c <= b)
+}
+
+/** 80x45 pixels of the world with the station on it: green land, the dot
+ *  in yellow, blinking, with a white cross-hair so it is found at a glance. */
+export function issPixels(lat, lon, ms) {
+  const W = 80, H = 45
+  const sx = Math.round((lon + 180) / 360 * W), sy = Math.round((90 - lat) / 180 * H)
+  const on = Math.floor(ms / 500) % 2 === 0
+  return pixels(W, H, (x, y) => {
+    if (Math.abs(x - sx) <= 1 && Math.abs(y - sy) <= 1) return on ? 'Y' : 'W'
+    if ((x === sx && Math.abs(y - sy) <= 3) || (y === sy && Math.abs(x - sx) <= 4)) return 'W'
+    return isLand(90 - (y + 0.5) * 180 / H, -180 + (x + 0.5) * 360 / W) ? 'G' : null
+  })
+}
+
+/** A rocket on its pad, 12x24 pixels, for the launch countdown: a white
+ *  body, red fins and nose, and, in the last minute, a flame. */
+export function rocketPixels(ms, lit = false) {
+  return pixels(12, 24, (x, y) => {
+    const cx = 5.5
+    if (y < 4) return Math.abs(x - cx) < (y + 1) * 0.55 ? 'R' : null
+    if (y < 17) return Math.abs(x - cx) < 2.3 ? (y === 8 && Math.abs(x - cx) < 1 ? 'C' : 'W') : null
+    if (y < 20) return Math.abs(x - cx) < 2.3 ? 'W' : Math.abs(x - cx) < 4.5 && y > 17 ? 'R' : null
+    if (!lit) return y === 23 ? 'W' : null
+    const f = Math.floor(ms / 90)
+    return Math.abs(x - cx) < 2.5 - (y - 20) * 0.4 + (hash3(x, y, f) - 0.5) ? 'Y' : null
+  })
+}
+
+/** A coin, 20x14 pixels, spinning: its width narrows and widens while it is
+ *  in the air (`spin` 0..1 through a flip), round when it lands. */
+export function coinPixels(spin = 0) {
+  const squash = spin > 0 ? Math.abs(Math.cos(spin * Math.PI * 6)) : 1
+  return pixels(20, 14, (x, y) => {
+    const dx = (x + 0.5 - 10) / (9 * Math.max(0.12, squash) / 1.24), dy = (y + 0.5 - 7) / 6.5
+    const d = dx * dx + dy * dy
+    return d < 1 ? (d > 0.62 ? 'Y' : 'W') : null
+  })
+}

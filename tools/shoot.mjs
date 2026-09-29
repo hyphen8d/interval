@@ -23,9 +23,11 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const SHOTS = path.join(here, '..', 'screenshots')
 const args = process.argv.slice(2)
 const flag = (n, d) => { const h = args.find((a) => a.startsWith(`--${n}=`)); return h ? h.slice(n.length + 3) : d }
+// --out=<dir> for a look that is not meant to be committed; --pages=a,b,c
+// for the `pages` recipe.
+const SHOTS = path.resolve(flag('out', path.join(here, '..', 'screenshots')))
 const BASE = flag('url', 'http://127.0.0.1:8081/')
 const W = 1200, H = 900, SCALE = 2
 
@@ -66,7 +68,7 @@ export async function session(url, { mobile = false } = {}, fn) {
     }
     const send = (method, params = {}) => new Promise((res, rej) => { const id = ++seq; pending.set(id, { res, rej }); ws.send(JSON.stringify({ id, method, params })) })
     const api = {
-      ev: async (e) => (await send('Runtime.evaluate', { expression: e, returnByValue: true })).result?.value,
+      ev: async (e) => (await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true })).result?.value,
       async key(k) {
         const [code, vk] = KEYS[k]
         for (const type of ['keyDown', 'keyUp']) {
@@ -101,6 +103,16 @@ export async function session(url, { mobile = false } = {}, fn) {
       },
     }
     await send('Page.enable'); await send('Runtime.enable')
+    // ESPN's scoreboards answer a real Chrome and refuse a headless one with
+    // a 403 (bot screening on the "HeadlessChrome" UA and client hints;
+    // checked 2026-09-28, real Chrome 153 from the Pages origin got all six).
+    // Without this the sport pages are captured OFF AIR, which no visitor sees.
+    const ua = (await send('Browser.getVersion')).userAgent.replace('HeadlessChrome', 'Chrome')
+    const major = ua.match(/Chrome\/(\d+)/)?.[1] || '140'
+    await send('Network.setUserAgentOverride', { userAgent: ua, userAgentMetadata: {
+      brands: [{ brand: 'Chromium', version: major }, { brand: 'Google Chrome', version: major }, { brand: 'Not=A?Brand', version: '24' }],
+      platform: 'Linux', platformVersion: '', architecture: 'x86', model: '', mobile: mobile,
+    } })
     if (mobile) {
       await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 3, mobile: true })
       await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
@@ -132,20 +144,12 @@ const RECIPES = {
   },
   async pages() {
     // Not 1AF or 1FF: the hidden pages stay unadvertised (CLAUDE.md).
-    for (const n of ['101', '310', '400', '500', '700']) {
+    for (const n of flag('pages', '101,300,401,500,700').split(',')) {
       await session(`${BASE}?page=${n}&power=on`, {}, async (a) => {
         await a.until(onPage(n)); await a.settleFrames(120)
         await a.png(path.join(SHOTS, `page-${n.toLowerCase()}.png`))
       })
     }
-  },
-  async quiz() {
-    await session(`${BASE}?page=600&power=on`, {}, async (a) => {
-      // HOLD first: a subpage turning mid-settle leaves the last one ghosting
-      // through the persistence at headless frame rates.
-      await a.until(onPage('600')); await a.key('h'); await a.settleFrames(150); await a.key('r'); await a.settleFrames(150)
-      await a.png(path.join(SHOTS, 'quiz-reveal.png'))
-    })
   },
   async modes() {
     await session(`${BASE}?page=101&power=on`, {}, async (a) => {

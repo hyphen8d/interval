@@ -1,19 +1,19 @@
 {
-  "checkedAt": "2026-09-29T02:36:40.289Z",
+  "checkedAt": "2026-09-29T03:25:43.183Z",
   "feeds": {
     "itn": {
       "id": "itn",
       "title": "Wikipedia: In the news",
-      "checkedAt": "2026-09-29T02:14:17.664Z",
+      "checkedAt": "2026-09-29T03:25:40.000Z",
       "items": 4,
       "detail": "4 stories, 6 deaths",
       "ok": true,
-      "ms": 332,
+      "ms": 327,
       "requests": 1,
       "status": 200,
       "cors": true,
       "strikes": 0,
-      "lastOk": "2026-09-29T02:14:17.664Z"
+      "lastOk": "2026-09-29T03:25:40.000Z"
     },
     "featured": {
       "id": "featured",
@@ -32,16 +32,16 @@
     "otd": {
       "id": "otd",
       "title": "Wikipedia: On this day",
-      "checkedAt": "2026-09-29T02:14:18.219Z",
+      "checkedAt": "2026-09-29T03:25:40.512Z",
       "items": 78,
       "detail": "18 selected, 60 events",
       "ok": true,
-      "ms": 123,
+      "ms": 134,
       "requests": 1,
       "status": 200,
       "cors": true,
       "strikes": 0,
-      "lastOk": "2026-09-29T02:14:18.219Z"
+      "lastOk": "2026-09-29T03:25:40.512Z"
     },
     "quakes": {
       "id": "quakes",
@@ -89,16 +89,16 @@
     "weather": {
       "id": "weather",
       "title": "Open-Meteo: local forecast",
-      "checkedAt": "2026-09-29T02:14:18.511Z",
+      "checkedAt": "2026-09-29T03:25:40.646Z",
       "items": 5,
       "detail": "5 days",
       "ok": true,
-      "ms": 715,
+      "ms": 728,
       "requests": 1,
       "status": 200,
       "cors": true,
       "strikes": 0,
-      "lastOk": "2026-09-29T02:14:18.511Z"
+      "lastOk": "2026-09-29T03:25:40.646Z"
     },
     "signal": {
       "id": "signal",
@@ -117,16 +117,16 @@
     "events": {
       "id": "events",
       "title": "Wikipedia: Current events (today, then yesterday)",
-      "checkedAt": "2026-09-29T02:14:17.996Z",
-      "items": 8,
-      "detail": "8 current events, today and yesterday",
+      "checkedAt": "2026-09-29T03:25:40.328Z",
+      "items": 10,
+      "detail": "10 current events, today and yesterday",
       "ok": true,
-      "ms": 222,
+      "ms": 184,
       "requests": 2,
       "status": 200,
       "cors": true,
       "strikes": 0,
-      "lastOk": "2026-09-29T02:14:17.996Z"
+      "lastOk": "2026-09-29T03:25:40.328Z"
     },
     "dyk": {
       "id": "dyk",
@@ -187,17 +187,157 @@
     "markets": {
       "id": "markets",
       "title": "FRED: market closes (built by the deploy workflow)",
-      "checkedAt": "2026-09-29T02:36:40.289Z",
+      "checkedAt": "2026-09-29T03:25:43.183Z",
       "items": 8,
       "detail": "8 series, built 0h ago",
       "staleHours": 0,
+      "ok": true,
+      "ms": 171,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T03:25:43.183Z"
+    },
+    "cities": {
+      "id": "cities",
+      "title": "Open-Meteo: twelve US cities",
+      "checkedAt": "2026-09-29T03:25:41.374Z",
+      "items": 12,
+      "detail": "12 cities, NEW YORK 15C",
       "ok": true,
       "ms": 192,
       "requests": 1,
       "status": 200,
       "cors": true,
       "strikes": 0,
-      "lastOk": "2026-09-29T02:36:40.289Z"
+      "lastOk": "2026-09-29T03:25:41.374Z"
+    },
+    "sport_nfl": {
+      "id": "sport_nfl",
+      "title": "ESPN: NFL scoreboard",
+      "checkedAt": "2026-09-29T03:25:41.566Z",
+      "items": 1,
+      "detail": "16 games this week",
+      "ok": true,
+      "ms": 105,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T03:25:41.566Z"
+    },
+    "sport_nba": {
+      "id": "sport_nba",
+      "title": "ESPN: NBA scoreboard",
+      "checkedAt": "2026-09-29T03:25:41.671Z",
+      "items": 1,
+      "detail": "1 games this week",
+      "ok": true,
+      "ms": 25,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T03:25:41.671Z"
+    },
+    "sport_mlb": {
+      "id": "sport_mlb",
+      "title": "ESPN: MLB scoreboard",
+      "checkedAt": "2026-09-29T03:25:41.697Z",
+      "items": 1,
+      "detail": "4 games this week",
+      "ok": true,
+      "ms": 49,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T03:25:41.697Z"
+    },
+    "sport_nhl": {
+      "id": "sport_nhl",
+      "title": "ESPN: NHL scoreboard",
+      "checkedAt": "2026-09-29T03:25:41.746Z",
+      "items": 1,
+      "detail": "5 games this week",
+      "ok": true,
+      "ms": 86,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T03:25:41.746Z"
+    },
+    "sport_epl": {
+      "id": "sport_epl",
+      "title": "ESPN: PREMIER LEAGUE scoreboard",
+      "checkedAt": "2026-09-29T03:25:41.832Z",
+      "items": 1,
+      "detail": "4 games this week",
+      "ok": true,
+      "ms": 43,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T03:25:41.832Z"
+    },
+    "sport_cfb": {
+      "id": "sport_cfb",
+      "title": "ESPN: COLLEGE FOOTBALL scoreboard",
+      "checkedAt": "2026-09-29T03:25:41.875Z",
+      "items": 1,
+      "detail": "16 games this week",
+      "ok": true,
+      "ms": 52,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T03:25:41.875Z"
+    },
+    "launches": {
+      "id": "launches",
+      "title": "Launch Library: upcoming launches",
+      "checkedAt": "2026-09-29T03:25:41.927Z",
+      "items": 6,
+      "detail": "next: Crew-13",
+      "ok": true,
+      "ms": 554,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T03:25:41.927Z"
+    },
+    "holidays": {
+      "id": "holidays",
+      "title": "Nager.Date: next US public holidays",
+      "checkedAt": "2026-09-29T03:25:42.482Z",
+      "items": 12,
+      "detail": "next: Columbus Day / Indigenous Peoples' Day 2026-10-12",
+      "ok": true,
+      "ms": 393,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T03:25:42.482Z"
+    },
+    "iss": {
+      "id": "iss",
+      "title": "Where the ISS is, now",
+      "checkedAt": "2026-09-29T03:25:42.875Z",
+      "items": 1,
+      "detail": "-2.5, -91.7",
+      "ok": true,
+      "ms": 308,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T03:25:42.875Z"
     }
   }
 }
