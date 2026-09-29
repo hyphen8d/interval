@@ -36,7 +36,7 @@ test('keying a page: the old page stays up while the header rolls, then the new 
   assert.match(h.row(0), /^ P2\d\d INTERVAL/, 'the page number is counting through magazine 2')
   await h.settle(3000)
   assert.ok(h.page().includes('ON THIS DAY'))
-  assert.ok(h.find('28 SEP'), 'and the grid shows it')
+  assert.ok(h.find('SEP 28'), 'and the grid shows it')
   assert.match(h.row(0), /^ P200 INTERVAL\s+Mon Sep 28/)
   h.shutdown()
 })

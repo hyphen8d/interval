@@ -173,7 +173,7 @@ test('money: the markets at the close', async () => {
   const ctx = ctxWith()
   const mk = pageDef('401', ctx).render(ctx)[0].lines().join('\n')
   assert.match(mk, /DOW JONES\s+51,481\.51 ▼ 0\.67%/)
-  assert.match(mk, /CLOSE 28 SEP/)
+  assert.match(mk, /CLOSE SEP 28/)
   assert.match(mk, /US 10-YEAR YIELD\s+5\.17%/)
   const stale = { ...ctx, now: Date.parse(DATA.markets.at) + 5 * 864e5 }
   assert.match(pageDef('401', stale).render(stale)[0].lines().join(' '), /PRICES NOT REFRESHED SINCE/)

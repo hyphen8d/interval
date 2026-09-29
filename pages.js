@@ -249,7 +249,9 @@ const defs = []
 const page = (num, title, def) => { defs.push({ num, title, feeds: [], ...def }); return num }
 const LONG_DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
 const MONTH_NAMES = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER']
-const longDate = (ms) => { const d = new Date(ms); return `${LONG_DAYS[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}` }
+/** "MONDAY, SEPTEMBER 28": US order (2026-09-28; "MONDAY 28 SEPTEMBER" read
+ *  as British to the people this is for). */
+const longDate = (ms) => { const d = new Date(ms); return `${LONG_DAYS[d.getDay()]}, ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}` }
 
 page('100', 'Index', {
   render(ctx) {
@@ -493,7 +495,7 @@ page('200', 'On this day', {
       const pool = otd.selected.length ? otd.selected : otd.events
       const picks = pickEvenly(pool, 6)
       // "28 SEP": the masthead's small print has eleven columns.
-      const date = ctx.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toUpperCase()
+      const date = ctx.date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }).toUpperCase()
       return picks.map((e, i) => {
         const p = new Page()
         masthead(p, '200', 'ON THIS DAY', { sub: i, subs: picks.length, right: date })
@@ -712,7 +714,7 @@ function move(now, prev) {
 
 /** 51,481.51 -> "51,481.51"; the index levels want their thousands. */
 const grouped = (x, dp = 2) => x.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })
-const shortDay = (iso) => { const d = new Date(`${iso}T12:00`); return `${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0, 3)}` }
+const shortDay = (iso) => { const d = new Date(`${iso}T12:00`); return `${MONTH_NAMES[d.getMonth()].slice(0, 3)} ${d.getDate()}` }
 
 /**
  * A bar chart in one row: two bars a cell, each 0-3 blocks high, scaled from
