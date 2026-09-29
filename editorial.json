@@ -195,5 +195,135 @@
       "text": "Wherever you are, be all there.",
       "by": "Jim Elliot"
     }
+  ],
+  "facts": [
+    {
+      "tag": "TECH",
+      "text": "The first computer bug was a real moth, found in a relay of the Harvard Mark II in 1947 and taped into the logbook."
+    },
+    {
+      "tag": "TECH",
+      "text": "The first message sent over ARPANET, in 1969, was meant to be LOGIN. The system crashed after the L and the O."
+    },
+    {
+      "tag": "TECH",
+      "text": "Ray Tomlinson chose the @ sign for email addresses in 1971, because it appeared in no one's name."
+    },
+    {
+      "tag": "TECH",
+      "text": "The first webcam watched a coffee pot at Cambridge University, so people could see if it was empty before walking over."
+    },
+    {
+      "tag": "TECH",
+      "text": "The first website went online at CERN in 1991. It has been restored and is still there, at info.cern.ch."
+    },
+    {
+      "tag": "TECH",
+      "text": "The first .com domain ever registered was symbolics.com, in 1985."
+    },
+    {
+      "tag": "TECH",
+      "text": "Bluetooth is named after Harald Bluetooth, a tenth-century king who united Denmark and Norway."
+    },
+    {
+      "tag": "TECH",
+      "text": "Google's search engine started life under the name BackRub."
+    },
+    {
+      "tag": "TECH",
+      "text": "The first computer mouse, built by Doug Engelbart's team in the 1960s, had a wooden shell."
+    },
+    {
+      "tag": "TECH",
+      "text": "The Python programming language is named after Monty Python, not the snake."
+    },
+    {
+      "tag": "TECH",
+      "text": "Junk email is called spam after a Monty Python sketch in which the word drowns out everything else."
+    },
+    {
+      "tag": "TECH",
+      "text": "The Apollo Guidance Computer that flew to the Moon had about 4 KB of working memory."
+    },
+    {
+      "tag": "TECH",
+      "text": "The original iPhone launched in 2007 without an App Store. The store opened a year later."
+    },
+    {
+      "tag": "TECH",
+      "text": "The word robot comes from Karel Capek's 1920 play R.U.R., from a Czech word for forced labour."
+    },
+    {
+      "tag": "GAMES",
+      "text": "Pac-Man was called Puck Man in Japan. The name was changed for the arcades abroad."
+    },
+    {
+      "tag": "GAMES",
+      "text": "Mario's first appearance was in Donkey Kong in 1981, where he was known as Jumpman."
+    },
+    {
+      "tag": "GAMES",
+      "text": "Tetris was written by Alexey Pajitnov in Moscow in 1984, on a Soviet computer."
+    },
+    {
+      "tag": "GAMES",
+      "text": "Nintendo was founded in 1889. It made playing cards."
+    },
+    {
+      "tag": "GAMES",
+      "text": "The PlayStation began as a CD add-on that Sony was building for the Super Nintendo."
+    },
+    {
+      "tag": "GAMES",
+      "text": "Space Invaders speeds up as you shoot the aliens because the hardware could move fewer of them faster. The designer kept it."
+    },
+    {
+      "tag": "GAMES",
+      "text": "The first Pong machine stopped working in a bar in 1972. The coin box had overflowed."
+    },
+    {
+      "tag": "GAMES",
+      "text": "Minecraft is the best-selling video game of all time."
+    },
+    {
+      "tag": "GAMES",
+      "text": "The Konami Code, up up down down left right left right B A, was added by a developer who found Gradius too hard."
+    },
+    {
+      "tag": "GAMES",
+      "text": "One of the first hidden Easter eggs in a game was Warren Robinett's secret credit in Adventure for the Atari 2600."
+    },
+    {
+      "tag": "HACKING",
+      "text": "A toy whistle from a cereal box played 2600 Hz, the tone that controlled AT&T's long-distance lines. Phone phreaks used it to make free calls."
+    },
+    {
+      "tag": "HACKING",
+      "text": "Hacker first meant a clever tinkerer, at MIT's Tech Model Railroad Club in the 1950s and 60s."
+    },
+    {
+      "tag": "HACKING",
+      "text": "Creeper, in 1971, is thought of as the first computer worm. Its message: I'M THE CREEPER: CATCH ME IF YOU CAN."
+    },
+    {
+      "tag": "HACKING",
+      "text": "The Morris Worm of 1988 slowed or stopped about a tenth of the computers on the early internet."
+    },
+    {
+      "tag": "HACKING",
+      "text": "Brain, the first virus for IBM PCs, was written in 1986 by two brothers in Pakistan. It carried their names and address."
+    },
+    {
+      "tag": "HACKING",
+      "text": "Leet, written 1337, comes from elite: the way early hackers spelled their status."
+    },
+    {
+      "tag": "HACKING",
+      "text": "123456 and password are still among the most common passwords in the world."
+    },
+    {
+      "tag": "HACKING",
+      "text": "Alan Turing's electromechanical bombes at Bletchley Park helped break the German Enigma codes."
+    }
   ]
 }

@@ -11,3 +11,5 @@
 tools/feed-watch-state.json
 dist/
 node_modules/
+markets.json
+_site/

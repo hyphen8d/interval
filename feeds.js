@@ -236,25 +236,6 @@ export function parseForecast(j) {
   }
 }
 
-/**
- * Wikipedia's "Did you know..." box: short, odd, true facts, each of which
- * reads in a glance -- which is the whole brief for this set (2026-09-28:
- * "bite-sized content in a fun interface"). Each item starts "... that" and
- * ends with a question mark; the "(pictured)" asides go, as in the news.
- */
-export function parseDYK(json) {
-  let html = json?.parse?.text
-  if (typeof html !== 'string') throw new Error('no parse.text in the response')
-  html = html.replace(/<style[\s\S]*?<\/style>/g, '')
-  const facts = [...html.matchAll(/<li>([\s\S]*?)<\/li>/g)]
-    .map(m => stripTags(m[1]))
-    .filter(t => /^\.\.\.\s*that\b/i.test(t))
-    .map(t => fold(t.replace(/^\.\.\.\s*that\b[\s,]*/i, '').replace(/\s*\((?:[^()]*\s)?pictured\)/gi, '').replace(/\s+([?,.])/g, '$1')).trim())
-    .filter(Boolean)
-  if (!facts.length) throw new Error('no "... that" facts in the box')
-  return { facts }
-}
-
 /** Exchange rates against the dollar, from a short daily series so each
  *  rate carries the day before for its arrow. ECB reference rates, set once
  *  a working day. */
@@ -270,10 +251,13 @@ export function parseRates(json) {
   }
 }
 
-/** Gold, silver, platinum: dollars per troy ounce. */
-export function parseMetal(json) {
-  if (!json || !Number.isFinite(json.price)) throw new Error('no price in the response')
-  return { symbol: json.symbol, name: fold(json.name || json.symbol), price: json.price, at: json.updatedAt || null }
+/** The markets file the deploy workflow writes (tools/fetch-markets.mjs):
+ *  checked for the shape page 401 reads, since it is built elsewhere. */
+export function parseMarkets(json) {
+  if (!json || !Array.isArray(json.series) || !json.series.length) throw new Error('no series in markets.json')
+  const series = json.series.filter(s => s && s.name && Number.isFinite(s.value))
+  if (!series.length) throw new Error('every series in markets.json was empty')
+  return { at: json.at || null, series }
 }
 
 /** The World Bank's world figures, one value (the latest there is) each. */
@@ -303,15 +287,17 @@ const mmdd = (d) => `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`
 
 export const ITN_URL = 'https://en.wikipedia.org/w/api.php?action=parse&page=Template:In_the_news&prop=text&format=json&formatversion=2&origin=*'
 export const QUAKES_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson'
-export const DYK_URL = 'https://en.wikipedia.org/w/api.php?action=parse&page=Template:Did_you_know&prop=text&format=json&formatversion=2&origin=*'
 /** The currencies 400 shows, in the order it shows them. */
 export const CURRENCIES = ['EUR', 'GBP', 'JPY', 'CNY', 'CAD', 'CHF', 'AUD', 'INR']
 export const ratesUrl = (d) => {
   const from = new Date(d.getTime() - 12 * 864e5).toISOString().slice(0, 10)
   return `https://api.frankfurter.dev/v1/${from}..?base=USD&symbols=${CURRENCIES.join(',')}`
 }
-export const METALS = ['XAU', 'XAG', 'XPT']
-export const metalUrl = (sym) => `https://api.gold-api.com/price/${sym}`
+/** Built beside the site by the deploy workflow; relative, so it is read
+ *  from whatever origin is serving the set. check-feeds passes the live
+ *  address, since what it checks is that the workflow is producing it. */
+export const MARKETS_URL = 'markets.json'
+export const MARKETS_LIVE_URL = 'https://hyphen8d.github.io/interval/markets.json'
 /** World Bank indicator codes, world aggregate, one request. */
 export const WB_INDICATORS = ['NY.GDP.MKTP.KD.ZG', 'FP.CPI.TOTL.ZG', 'SP.POP.TOTL', 'SP.POP.GROW', 'SL.UEM.TOTL.ZS']
 export const WB_URL = `https://api.worldbank.org/v2/country/WLD/indicator/${WB_INDICATORS.join(';')}?format=json&source=2&mrnev=1&per_page=20`
@@ -396,25 +382,15 @@ export const FEEDS = {
       return parseForecast(await getJSON(f, forecastUrl(env.location.lat, env.location.lon, env.units)))
     },
   },
-  dyk: {
-    label: 'WIKIPEDIA', title: 'Wikipedia: Did you know', refreshMs: 60 * MIN,
-    url: () => DYK_URL,
-    load: async (f) => parseDYK(await getJSON(f, DYK_URL)),
-  },
   rates: {
     label: 'ECB', title: 'Frankfurter: ECB reference rates against the dollar', refreshMs: 60 * MIN,
     url: (env) => ratesUrl(env.date()),
     load: async (f, env) => parseRates(await getJSON(f, ratesUrl(env.date()))),
   },
-  metals: {
-    label: 'GOLD-API.COM', title: 'gold-api.com: gold, silver, platinum', refreshMs: 15 * MIN,
-    url: () => metalUrl(METALS[0]),
-    load: async (f) => {
-      const got = await Promise.all(METALS.map(m => getJSON(f, metalUrl(m)).then(parseMetal).catch(() => null)))
-      const metals = got.filter(Boolean)
-      if (!metals.length) throw new Error('no metal could be read')
-      return { metals }
-    },
+  markets: {
+    label: 'FRED', title: 'FRED: market closes (built by the deploy workflow)', refreshMs: 60 * MIN,
+    url: (env) => env.marketsUrl || MARKETS_URL,
+    load: async (f, env) => parseMarkets(await getJSON(f, env.marketsUrl || MARKETS_URL)),
   },
   world: {
     label: 'WORLD BANK', title: 'World Bank: world growth, inflation, population', refreshMs: 24 * 60 * MIN,

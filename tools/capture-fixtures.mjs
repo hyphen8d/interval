@@ -47,9 +47,8 @@ const steps = [
   ['usgs-4.5-day.json', async () => get(F.QUAKES_URL)],
   ['swpc-kp.json', async () => get(F.KP_URL)],
   ['open-meteo.json', async () => get(F.forecastUrl(40.7, -74.0, 'F'))],
-  ['wiki-dyk.json', async () => get(F.DYK_URL)],
   ['frankfurter-usd.json', async () => get(F.ratesUrl(d))],
-  ['metals.json', async () => Object.fromEntries(await Promise.all(F.METALS.map(async m => [m, await get(F.metalUrl(m))])))],
+  ['markets.json', async () => (await import('./fetch-markets.mjs')).fetchMarkets()],
   ['worldbank-world.json', async () => get(F.WB_URL)],
 ]
 

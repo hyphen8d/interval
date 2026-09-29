@@ -178,6 +178,11 @@
         <button class="act" id="fk-add">add question</button>
       </div>
       <div class="panel">
+        <h2>Did you know &mdash; page 102, eight a day</h2>
+        <div id="fx"></div>
+        <button class="act" id="fx-add">add fact</button>
+      </div>
+      <div class="panel">
         <h2>Thoughts &mdash; page 501, one a day</h2>
         <div id="th"></div>
         <button class="act" id="th-add">add thought</button>
@@ -478,6 +483,17 @@ function renderFourKeys() {
 }
 $('fk-add').onclick = () => { editorial.fourkeys.push({ q: '', options: ['', '', '', ''], answer: 0 }); markDirty(); renderFourKeys() }
 
+const TAGS = ['TECH', 'GAMES', 'HACKING']
+function renderFacts() {
+  editorial.facts ||= []
+  $('fx').replaceChildren(...editorial.facts.map((f, i) => h('div', { class: 'qrow', style: 'grid-template-columns:28px 110px minmax(0,1fr) 28px' },
+    h('span', { class: 'muted' }, String(i + 1)),
+    h('select', { onchange: (e) => { f.tag = e.target.value; markDirty() } }, TAGS.map(t => h('option', { value: t, selected: f.tag === t }, t))),
+    h('input', { type: 'text', value: f.text, maxlength: 160, placeholder: 'one short, true fact', oninput: (e) => { f.text = e.target.value; markDirty() } }),
+    h('button', { class: 'act', title: 'remove', onclick: () => { editorial.facts.splice(i, 1); markDirty(); renderFacts() } }, 'x'))))
+}
+$('fx-add').onclick = () => { editorial.facts.push({ tag: 'TECH', text: '' }); markDirty(); renderFacts() }
+
 function renderThoughts() {
   editorial.thoughts ||= []
   $('th').replaceChildren(...editorial.thoughts.map((t, i) => h('div', { class: 'qrow' },
@@ -497,7 +513,7 @@ $('ed-save').onclick = async () => {
   else $('ed-state').innerHTML = '<span class="bad">not saved: fix the errors first</span>'
 }
 addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = '' } })
-renderNotices(); renderQuiz(); renderFourKeys(); renderThoughts(); showIssues(state.lint)
+renderNotices(); renderQuiz(); renderFourKeys(); renderFacts(); renderThoughts(); showIssues(state.lint)
 
 // -------------------------------------------------------------- sources tab
 const ago = (iso) => {

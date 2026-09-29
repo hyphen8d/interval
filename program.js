@@ -749,16 +749,20 @@ const program = {
     const H = new T.Page()
     const shown = this.entry ? this.entry.padEnd(3, '-') : (this.want || this.page || '---')
     H.text(0, 1, `P${shown}`, T.WHITE)
+    // The service name on its own plate, yellow on blue (2026-09-28: it read
+    // as one more word in a white line of numbers). Messages -- HOLD, SIZE,
+    // CYCLING -- take the plate over briefly, in the same place.
     const msg = this.msg && now < this.msg.until ? this.msg.text : null
-    if (msg) H.text(0, 6, msg.slice(0, 8), T.YELLOW)
-    else if (this.hold) H.text(0, 6, 'HOLD', T.RED)
-    else H.text(0, 6, 'INTERVAL', T.WHITE)
-    if (this.want) H.text(0, 15, C.rollingNumber(this.want[0], now), T.GREEN)
-    else if (this.page) H.text(0, 15, this.page, T.WHITE)
+    H.band(0, T.BLUE, 5, 15)
+    if (msg) H.text(0, 6, msg.slice(0, 8), T.WHITE, T.BLUE)
+    else if (this.hold) H.text(0, 6, 'HOLD', T.RED, T.BLUE)
+    else H.text(0, 6, 'INTERVAL', T.YELLOW, T.BLUE)
+    if (this.want) H.text(0, 16, C.rollingNumber(this.want[0], now), T.GREEN)
+    else if (this.page) H.text(0, 16, this.page, T.WHITE)
     const d = new Date()
     const date = `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${pad2(d.getDate())} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]}`
-    H.text(0, 19, date, T.WHITE)
-    H.text(0, 30, `${pad2(d.getHours())}:${pad2(d.getMinutes())}/${pad2(d.getSeconds())}`, T.YELLOW)
+    H.text(0, 20, date, T.WHITE)
+    H.text(0, 31, `${pad2(d.getHours())}:${pad2(d.getMinutes())}/${pad2(d.getSeconds())}`, T.YELLOW)
     return H.cells[0]
   },
 

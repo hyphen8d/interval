@@ -100,7 +100,7 @@ test('editorial saves are linted first, and a failing one writes nothing', async
 
 test('only the shape the set reads is ever written', () => {
   const n = admin.normaliseEditorial({ quiz: [{ q: 'q', a: 'a', extra: 1 }], evil: true, notices: [{ page: '19a', title: 't', lines: [1] }] })
-  assert.deepEqual(Object.keys(n).sort(), ['fourkeys', 'notices', 'quiz', 'thoughts'])
+  assert.deepEqual(Object.keys(n).sort(), ['facts', 'fourkeys', 'notices', 'quiz', 'thoughts'])
   assert.deepEqual(n.quiz, [{ q: 'q', a: 'a' }])
   assert.equal(n.notices[0].page, '19A')
   assert.deepEqual(n.notices[0].lines, ['1'])
@@ -111,4 +111,11 @@ test('the lint runs clean on the committed pages and editorial', async () => {
   const r = await lint()
   assert.deepEqual(r.errors, [])
   assert.ok(r.pages > 50)
+})
+
+test('the published site is the app and nothing else', async () => {
+  const { siteFiles } = await import('../tools/build-site.mjs')
+  const files = siteFiles()
+  for (const f of ['index.html', 'main.js', 'program.js', 'editorial.json', 'build.json', 'src/crt.js', 'fonts/ter-u16b.bdf']) assert.ok(files.includes(f), f)
+  assert.ok(!files.some(f => f.startsWith('tools/') || f.startsWith('tests/') || f.split('/').some(s => s.startsWith('.'))), 'no tools, tests or dotfiles')
 })

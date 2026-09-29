@@ -52,7 +52,8 @@ test('the fastext row is drawn as four keys, with a gap between each', () => {
   assert.equal(p.cells[24][22].bg, BLACK, 'a dead key leaves its slot empty')
   const news = p.cells[24].findIndex(x => x.ch === 'N')
   assert.equal(p.cells[24][news].fg, WHITE, 'white on red')
-  assert.equal(p.cells[24][p.cells[24].findIndex(x => x.ch === 'W')].fg, BLACK, 'dark on green')
+  // 'A' appears only in WEATHER on this row (NEWS has a W of its own).
+  assert.equal(p.cells[24][p.cells[24].findIndex(x => x.ch === 'A')].fg, BLACK, 'dark on green')
   assert.deepEqual([0, 8, 9, 10, 25, 35].map(c => p.fastextAt(c)), [0, 0, null, 1, null, 3])
 })
 
@@ -101,9 +102,9 @@ test('a tap on a set in standby switches it on', async () => {
 
 test('the phone remote is told what the coloured keys do, page by page', async () => {
   const h = await boot()
-  assert.deepEqual(h.fastextLabels.at(-1), ['Index', 'News', 'Help', 'Pause'])
+  assert.deepEqual(h.fastextLabels.at(-1), ['INDEX', 'NEWS', 'HELP', 'PAUSE'])
   await h.go('310', 3500)
-  assert.deepEqual(h.fastextLabels.at(-1), ['Weather', 'Space', 'Breathe', 'Index'])
+  assert.deepEqual(h.fastextLabels.at(-1), ['WEATHER', 'SPACE', 'BREATHE', 'INDEX'])
   h.key('n')
   assert.deepEqual(h.fastextLabels.at(-1), [null, null, null, null], 'cycling: the strip replaces the keys')
   h.shutdown()

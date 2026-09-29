@@ -25,10 +25,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 export const MASTHEAD_TITLE_MAX = 26
 export const QUIZ_ANSWER_MAX = 32
 export const FOURKEYS_OPTION_MAX = 24
-export const FASTEXT_LABEL_MAX = 9
+export const FASTEXT_LABEL_MAX = 8
+export const FASTEXT_LABEL = /^[A-Z0-9&-]{1,8}$/
 export const HELP_LABEL_MAX = 28
 /** A thought is read at a glance: eight lines of the page at most. */
 export const THOUGHT_MAX = 240
+/** A fact is a glance too: four lines. */
+export const FACT_MAX = 160
+export const FACT_TAGS = ['TECH', 'GAMES', 'HACKING']
 
 const SPECIAL = /^(locate|sub:next|game:(\d|next|reset))$/
 
@@ -39,7 +43,7 @@ const SPECIAL = /^(locate|sub:next|game:(\d|next|reset))$/
  */
 export async function lint({ editorial } = {}) {
   editorial ??= JSON.parse(readFileSync(path.join(ROOT, 'editorial.json'), 'utf8'))
-  const { PAGES, pageDef, pageOrder, INDEX } = await import('../pages.js')
+  const { PAGES, pageDef, pageOrder, INDEX, FACTS_PER_DAY } = await import('../pages.js')
   const { validPage } = await import('../carousel.js')
   const { lintLines } = await import('../markup.js')
   const { KEYS } = await import('../constants.js')
@@ -80,11 +84,18 @@ export async function lint({ editorial } = {}) {
     else q.options.forEach((o, k) => {
       if (!String(o).trim()) errors.push(`${where}: option ${k + 1} is empty`)
       if (String(o).length > FOURKEYS_OPTION_MAX) errors.push(`${where}: option ${k + 1} is ${o.length} long; ${FOURKEYS_OPTION_MAX} fit`)
-      else if (String(o).length > FASTEXT_LABEL_MAX) warnings.push(`${where}: option ${k + 1} "${o}" is cut to ${FASTEXT_LABEL_MAX} on the fastext row`)
+      else if (!FASTEXT_LABEL.test(String(o))) errors.push(`${where}: option ${k + 1} "${o}" is also its coloured key's label: one word in capitals, ${FASTEXT_LABEL_MAX} at most`)
     })
     if (!Number.isInteger(q.answer) || q.answer < 0 || q.answer > 3) errors.push(`${where}: answer must be 0-3 (red, green, yellow, cyan)`)
   })
 
+  const facts = editorial.facts || []
+  if (facts.length < FACTS_PER_DAY) errors.push(`editorial: DID YOU KNOW (102) shows ${FACTS_PER_DAY} a day and has ${facts.length}`)
+  facts.forEach((f, i) => {
+    if (!FACT_TAGS.includes(f.tag)) errors.push(`fact ${i + 1}: tag "${f.tag}" is not one of ${FACT_TAGS.join(', ')}`)
+    if (!f.text || !String(f.text).trim()) errors.push(`fact ${i + 1}: no text`)
+    else if (String(f.text).length > FACT_MAX) errors.push(`fact ${i + 1}: ${f.text.length} long; ${FACT_MAX} read at a glance`)
+  })
   const thoughts = editorial.thoughts || []
   if (!thoughts.length) errors.push('editorial: A THOUGHT (501) has no thoughts')
   thoughts.forEach((t, i) => {
@@ -111,8 +122,12 @@ export async function lint({ editorial } = {}) {
       for (const f of p.fastext) {
         if (!f) continue
         const [label, target] = f
-        const cut = `${num}: fastext "${label}" is cut to ${FASTEXT_LABEL_MAX}`
-        if (label.length > FASTEXT_LABEL_MAX && !warnings.includes(cut)) warnings.push(cut)
+        // One word, capitals, eight at most: the keys read as a set of
+        // buttons only when every label has the same shape.
+        if (!FASTEXT_LABEL.test(label)) {
+          const bad = `${num}: fastext "${label}" must be one word in capitals, ${FASTEXT_LABEL_MAX} letters at most`
+          if (!errors.includes(bad)) errors.push(bad)
+        }
         if (!SPECIAL.test(target) && !(validPage(target) && pageDef(target, ctx))) errors.push(`${where}: fastext "${label}" goes to ${target}, which is not a page`)
       }
     })

@@ -75,7 +75,7 @@ export const SECTIONS = [
   { name: 'NEWS', pages: [['HEADLINES', '101'], ['FACTS', '102']] },
   { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201']] },
   { name: 'WEATHER', pages: [['TODAY', '300'], ['5-DAY', '301'], ['SKY', '310'], ['SPACE', '320'], ['QUAKES', '330']] },
-  { name: 'MONEY', pages: [['CURRENCIES', '400'], ['METALS', '401'], ['THE WORLD', '410']] },
+  { name: 'MONEY', pages: [['CURRENCIES', '400'], ['MARKETS', '401'], ['THE WORLD', '410']] },
   { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501']] },
   { name: 'QUIZ', pages: [['QUIZ', '600']] },
   { name: 'GALLERY', pages: [['PICTURES', '700']] },
@@ -137,7 +137,7 @@ export function offAir(num, title, feedIds, ctx) {
     r = p.wrap(r + 1, 2, `${FEEDS[id]?.title ?? id}: ${e?.error ? `failed (${e.error})` : 'no answer yet'}`, 36, CYAN)
   }
   p.wrap(r + 1, 2, 'It will come back by itself when the source answers. Nothing needs doing.', 36, GREEN)
-  p.fast([['Index', '100'], null, null, ['Help', '199']])
+  p.fast([['INDEX', '100'], null, null, ['HELP', '199']])
   return p
 }
 
@@ -274,7 +274,7 @@ page('100', 'Index', {
     // Keyboard on a desktop, taps on a phone -- no mouse (pointer.js).
     p.text(22, 1, ctx.env.touch ? 'TAP A NUMBER, OR KEY IT IN' : 'KEY A PAGE NUMBER', MAGENTA)
     p.text(23, 1, ctx.env.touch ? 'CYCLE: THE CYCLE BUTTON' : 'N: LET THE SET CYCLE THE PAGES', WHITE)
-    p.fast([['News', '101'], ['Weather', '300'], ['Money', '400'], ['Pause', '500']])
+    p.fast([['NEWS', '101'], ['WEATHER', '300'], ['MONEY', '400'], ['PAUSE', '500']])
     return [p]
   },
 })
@@ -353,26 +353,42 @@ page('101', 'News headlines', {
         masthead(p, '101', 'NEWS', { sub: i, subs: laid.length, right: i ? 'HEADLINES' : longDate(ctx.now).split(' ')[0] })
         for (const { block, row } of placed) block.draw(p, row)
         creditLine(p, ctx, 'itn')
-        p.fast([['Did you', '102'], ['This day', '200'], ['Weather', '300'], ['Index', '100']])
+        p.fast([['FACTS', '102'], ['TODAY', '200'], ['WEATHER', '300'], ['INDEX', '100']])
         return p
       })
     })
   },
 })
 
+/**
+ * Did you know (2026-09-28, second pass): short tech, gaming and hacking
+ * facts from the editorial file, eight a day, a different eight each day.
+ * The first pass read Wikipedia's own "Did you know", which is true and odd
+ * and far too deep for a glance ("...that Sun Pictures released nearly 20
+ * films between 2008 and 2010..."), and it cannot be steered to a subject.
+ */
+export const FACTS_PER_DAY = 8
+export function factsFor(list, nowMs) {
+  if (!list?.length) return []
+  const d = new Date(nowMs)
+  const day = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 0)) / 864e5)
+  const n = Math.min(FACTS_PER_DAY, list.length)
+  return Array.from({ length: n }, (_, i) => list[(day * n + i) % list.length])
+}
+const TAG_COLOUR = { TECH: CYAN, GAMES: GREEN, HACKING: MAGENTA }
 page('102', 'Did you know', {
-  feeds: ['dyk'],
   subpageMs: 12000,
   render(ctx) {
-    return gate(ctx, '102', 'DID YOU KNOW', ['dyk'], ({ dyk }) => dyk.facts.map((fact, i) => {
+    const facts = factsFor(ctx.editorial.facts, ctx.now)
+    if (!facts.length) return [listPage('102', 'DID YOU KNOW', [], ctx, { fast: [['INDEX', '100']], empty: 'No facts written yet.' })[0]]
+    return facts.map((f, i) => {
       const p = new Page()
-      masthead(p, '102', 'DID YOU KNOW', { sub: i, subs: dyk.facts.length, right: 'NEWS' })
-      p.double(BODY_TOP + 1, 1, '...that', YELLOW)
-      p.wrap(BODY_TOP + 4, 1, fact, 38, WHITE, BODY_BOTTOM)
-      creditLine(p, ctx, 'dyk')
-      p.fast([['Headlines', '101'], ['This day', '200'], ['Born', '201'], ['Index', '100']])
+      masthead(p, '102', 'DID YOU KNOW', { sub: i, subs: facts.length, right: f.tag || 'NEWS' })
+      p.text(BODY_TOP + 1, 1, f.tag || '', TAG_COLOUR[f.tag] || YELLOW)
+      p.wrap(BODY_TOP + 3, 1, f.text, 38, WHITE, BODY_BOTTOM)
+      p.fast([['NEWS', '101'], ['TODAY', '200'], ['BORN', '201'], ['INDEX', '100']])
       return p
-    }))
+    })
   },
 })
 
@@ -389,7 +405,7 @@ function noticePage(n) {
   const p = new Page()
   masthead(p, n.page, n.title || 'NOTICES', { right: 'INTERVAL' })
   drawLines(p, n.lines || [], BODY_TOP, 1)
-  p.fast([['Index', '100'], ['News', '101'], ['Help', '199'], ['Pause', '500']])
+  p.fast([['INDEX', '100'], ['NEWS', '101'], ['HELP', '199'], ['PAUSE', '500']])
   return p
 }
 
@@ -406,7 +422,7 @@ page('199', 'Help: using the set', {
     }
     if (ctx.env.touch) p.wrap(r + 1, 1, 'Or tap a page number or a coloured key. Swipe for pages and subpages.', 38, WHITE, 21)
     p.text(22, 1, 'The top line counts while you wait.', GREEN)
-    p.fast([['Index', '100'], ['Welcome', '190'], ['News', '101'], ['Quiz', '600']])
+    p.fast([['INDEX', '100'], ['WELCOME', '190'], ['NEWS', '101'], ['QUIZ', '600']])
     return [p]
   },
 })
@@ -428,7 +444,7 @@ page('1AF', 'Engineering test page', {
     p.text(15, 4, '`abcdefghijklmnopqrstuvwxyz{|}~£', CYAN)
     p.wrap(17, 1, 'No remote control could key this page: its number has a letter in it. Real services kept their engineering pages here.', 38, WHITE)
     p.flashing(21, 1, 'THERE IS ANOTHER ON 1FF', MAGENTA)
-    p.fast([['Index', '100'], ['1FF', '1FF'], null, ['Help', '199']])
+    p.fast([['INDEX', '100'], ['1FF', '1FF'], null, ['HELP', '199']])
     return [p]
   },
 })
@@ -457,7 +473,7 @@ page('1FF', 'Four keys: a hidden game', {
     } else {
       p.double(18, 1, g.answered === q.answer ? 'RIGHT!' : 'NOT THIS TIME', g.answered === q.answer ? GREEN : RED)
       p.text(21, 1, `BEST ${g.best}  QUESTION ${(g.i % qs.length) + 1} OF ${qs.length}`, CYAN)
-      p.fast([['Next', 'game:next'], ['Index', '100'], null, ['Restart', 'game:reset']])
+      p.fast([['NEXT', 'game:next'], ['INDEX', '100'], null, ['RESTART', 'game:reset']])
     }
     return [p]
   },
@@ -477,7 +493,7 @@ page('200', 'On this day', {
         p.double(BODY_TOP, 1, String(e.year ?? ''), YELLOW)
         p.wrap(BODY_TOP + 3, 1, e.text, 38, WHITE, BODY_BOTTOM)
         creditLine(p, ctx, 'otd')
-        p.fast([['Born', '201'], ['News', '101'], ['Weather', '300'], ['Index', '100']])
+        p.fast([['BORN', '201'], ['NEWS', '101'], ['WEATHER', '300'], ['INDEX', '100']])
         return p
       })
     })
@@ -512,7 +528,7 @@ page('201', 'Born today', {
         for (const l of wrapText(name, 38).slice(0, 2)) { p.double(r, 1, l, YELLOW); r += 2 }
         if (what) p.wrap(r + 1, 1, what[0].toUpperCase() + what.slice(1), 38, WHITE, BODY_BOTTOM)
         creditLine(p, ctx, 'otd')
-        p.fast([['This day', '200'], ['News', '101'], ['Weather', '300'], ['Index', '100']])
+        p.fast([['TODAY', '200'], ['NEWS', '101'], ['WEATHER', '300'], ['INDEX', '100']])
         return p
       })
     })
@@ -538,7 +554,7 @@ function weatherGate(num, title, ctx, fn) {
     ]
     let r = BODY_TOP + 3
     for (const para of copy) r = p.wrap(r, 1, para, 38, WHITE) + 1
-    p.fast([loc === 'insecure' || loc === 'unsupported' || loc === 'asking' ? null : ['Locate me', 'locate'], ['Sky', '310'], ['Quakes', '330'], ['Index', '100']])
+    p.fast([loc === 'insecure' || loc === 'unsupported' || loc === 'asking' ? null : ['LOCATE', 'locate'], ['SKY', '310'], ['QUAKES', '330'], ['INDEX', '100']])
     return [p]
   }
   return gate(ctx, num, title, ['weather'], ({ weather }) => fn(weather))
@@ -572,7 +588,7 @@ page('300', 'Weather: today', {
       }
       p.text(22, 1, '% IS THE CHANCE OF RAIN', MAGENTA)
       creditLine(p, ctx, 'weather')
-      p.fast([['5-day', '301'], ['Sky', '310'], ['Space', '320'], ['Index', '100']])
+      p.fast([['5-DAY', '301'], ['SKY', '310'], ['SPACE', '320'], ['INDEX', '100']])
       return [p]
     })
   },
@@ -602,7 +618,7 @@ page('301', 'Weather: five days', {
         p.bar(r + 1, 6 + start, Math.max(2, b - start * 2), d.hi >= 80 || (w.units === 'C' && d.hi >= 27) ? RED : YELLOW)
       })
       creditLine(p, ctx, 'weather')
-      p.fast([['Today', '300'], ['Sky', '310'], ['Space', '320'], ['Index', '100']])
+      p.fast([['NOW', '300'], ['SKY', '310'], ['SPACE', '320'], ['INDEX', '100']])
       return [p]
     })
   },
@@ -637,7 +653,7 @@ page('310', 'Sky tonight', {
       r = p.wrap(r, 1, 'Sunrise and sunset need your location: see page 300.', 38, WHITE) + 1
     }
     p.wrap(r, 1, 'Worked out on the set from the date. This page needs no signal at all.', 38, GREEN)
-    p.fast([['Weather', '300'], ['Space', '320'], ['Breathe', '500'], ['Index', '100']])
+    p.fast([['WEATHER', '300'], ['SPACE', '320'], ['BREATHE', '500'], ['INDEX', '100']])
     return [p]
   },
 })
@@ -672,7 +688,7 @@ page('320', 'Space weather', {
         ? 'A storm this strong can push the aurora well south of the usual latitudes. Worth a look outside after dark.'
         : 'Aurora is unlikely away from high latitudes at this level.', 38, WHITE)
       creditLine(p, ctx, 'kp')
-      p.fast([['Weather', '300'], ['Sky', '310'], ['Quakes', '330'], ['Index', '100']])
+      p.fast([['WEATHER', '300'], ['SKY', '310'], ['QUAKES', '330'], ['INDEX', '100']])
       return [p]
     })
   },
@@ -704,7 +720,7 @@ page('330', 'Earthquakes', {
         })
         p.text(22, 1, 'TIMES LOCAL.  T: TSUNAMI MESSAGE ISSUED', MAGENTA)
         creditLine(p, ctx, 'quakes')
-        p.fast([['Space', '320'], ['Weather', '300'], ['Money', '400'], ['Index', '100']])
+        p.fast([['SPACE', '320'], ['WEATHER', '300'], ['MONEY', '400'], ['INDEX', '100']])
         return p
       })
     })
@@ -751,31 +767,47 @@ page('400', 'Currencies', {
       }
       p.text(22, 1, `${rates.date}  ▲ THE DOLLAR BUYS MORE`, CYAN)
       creditLine(p, ctx, 'rates')
-      p.fast([['Metals', '401'], ['World', '410'], ['News', '101'], ['Index', '100']])
+      p.fast([['MARKETS', '401'], ['WORLD', '410'], ['NEWS', '101'], ['INDEX', '100']])
       return [p]
     })
   },
 })
 
-const money$ = (x) => `$${x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-page('401', 'Gold and silver', {
-  feeds: ['metals'],
+/** 51,481.51 -> "51,481.51"; the index levels want their thousands. */
+const grouped = (x, dp = 2) => x.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })
+const shortDay = (iso) => { const d = new Date(`${iso}T12:00`); return `${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0, 3)}` }
+
+/**
+ * World markets at the close (2026-09-28): the Dow, the S&P 500, the
+ * Nasdaq and the Nikkei, then the VIX, the ten-year yield and oil. Built by
+ * the deploy workflow from FRED (tools/fetch-markets.mjs), because nothing
+ * serves index levels to a browser without a key. Each row carries its own
+ * close's date: FRED's series do not all update on the same day.
+ */
+page('401', 'World markets', {
+  feeds: ['markets'],
   render(ctx) {
-    return gate(ctx, '401', 'GOLD & SILVER', ['metals'], ({ metals }) => {
+    return gate(ctx, '401', 'MARKETS', ['markets'], ({ markets }) => {
       const p = new Page()
-      masthead(p, '401', 'GOLD & SILVER', { right: 'MONEY' })
-      p.text(BODY_TOP, 1, 'PER TROY OUNCE, IN US DOLLARS', CYAN)
-      const colour = { XAU: YELLOW, XAG: WHITE, XPT: CYAN }
-      let r = BODY_TOP + 2
-      for (const m of metals.metals) {
-        p.text(r, 1, m.name.toUpperCase(), colour[m.symbol] || WHITE)
-        p.double(r + 1, 1, money$(m.price), colour[m.symbol] || WHITE)
-        r += 4
+      masthead(p, '401', 'MARKETS', { right: 'CLOSES' })
+      let r = BODY_TOP
+      for (const s of markets.series) {
+        if (r > 19) break
+        const value = s.kind === 'percent' ? `${s.value.toFixed(2)}%` : s.kind === 'dollars' ? `$${s.value.toFixed(2)}` : grouped(s.value, s.kind === 'level' ? 2 : 2)
+        p.text(r, 1, clip(s.name, 16), YELLOW)
+        p.text(r, 18, value.padStart(10), WHITE)
+        const m = move(s.value, s.prev)
+        if (m) { const c = m.up === null ? WHITE : m.up ? GREEN : RED; p.text(r, 29, m.mark, c); p.text(r, 30, m.pct.padStart(6), c) }
+        p.text(r + 1, 18, `CLOSE ${shortDay(s.date)}`.padStart(10), CYAN)
+        r += 2
       }
-      const gold = metals.metals.find(m => m.symbol === 'XAU'), silver = metals.metals.find(m => m.symbol === 'XAG')
-      if (gold && silver) p.text(r, 1, `ONE OUNCE OF GOLD = ${Math.round(gold.price / silver.price)} OF SILVER`, GREEN)
-      creditLine(p, ctx, 'metals')
-      p.fast([['Currency', '400'], ['World', '410'], ['News', '101'], ['Index', '100']])
+      // The file is rebuilt a few times each weekday; one that has not been
+      // rebuilt in days means the workflow has stopped, and the page says so.
+      const age = markets.at ? ctx.now - Date.parse(markets.at) : 0
+      if (age > 3 * 864e5) p.text(21, 1, clip(`PRICES NOT REFRESHED SINCE ${shortDay(markets.at.slice(0, 10))}`, 38), RED)
+      else p.text(21, 1, 'DAILY CLOSES, UPDATED EACH WEEKDAY', GREEN)
+      creditLine(p, ctx, 'markets')
+      p.fast([['CURRENCY', '400'], ['WORLD', '410'], ['NEWS', '101'], ['INDEX', '100']])
       return [p]
     })
   },
@@ -817,7 +849,7 @@ page('410', 'The world in numbers', {
       line(BODY_TOP + 11, 'POPULATION GROWTH', 'SP.POP.GROW', v => `${v.toFixed(2)}%`)
       p.text(BODY_TOP + 13, 1, 'WHOLE WORLD, LATEST YEAR REPORTED', GREEN)
       creditLine(p, ctx, 'world')
-      p.fast([['Currency', '400'], ['Metals', '401'], ['News', '101'], ['Index', '100']])
+      p.fast([['CURRENCY', '400'], ['MARKETS', '401'], ['NEWS', '101'], ['INDEX', '100']])
       return [p]
     })
   },
@@ -868,7 +900,7 @@ page('500', 'Breathe', {
     p.double(19, Math.floor((COLS - word.length) / 2), word, WHITE)
     p.text(21, 19, String(b.count), YELLOW)
     p.text(22, 1, 'IN FOUR, HOLD FOUR, OUT FOUR, HOLD FOUR', GREEN)
-    p.fast([['A thought', '501'], ['Index', '100'], ['News', '101'], ['Gallery', '700']])
+    p.fast([['THOUGHT', '501'], ['INDEX', '100'], ['NEWS', '101'], ['GALLERY', '700']])
     return [p]
   },
 })
@@ -890,7 +922,7 @@ page('501', 'A thought', {
     let r = Math.max(BODY_TOP + 1, 12 - lines.length)
     for (const l of lines) p.text(r++, 2, l, YELLOW)
     if (t.by) p.text(r + 1, 38 - Math.min(36, t.by.length + 2), clip(`- ${t.by}`, 36), CYAN)
-    p.fast([['Breathe', '500'], ['Index', '100'], ['News', '101'], ['Gallery', '700']])
+    p.fast([['BREATHE', '500'], ['INDEX', '100'], ['NEWS', '101'], ['GALLERY', '700']])
     return [p]
   },
 })
@@ -913,7 +945,7 @@ page('600', 'Quiz', {
         r += 2
       })
       p.text(22, 1, 'R REVEALS THE ANSWERS', MAGENTA)
-      p.fast([['Index', '100'], ['Gallery', '700'], ['Pause', '500'], ['Help', '199']])
+      p.fast([['INDEX', '100'], ['GALLERY', '700'], ['PAUSE', '500'], ['HELP', '199']])
       return p
     })
   },
@@ -993,7 +1025,7 @@ page('700', 'Gallery', {
       masthead(p, '700', 'GALLERY', { sub: i, subs: GALLERY.length, right: 'PICTURES' })
       g.draw(p)
       p.text(23, 1, `${g.title}, IN 2 BY 3 BLOCKS`, CYAN)
-      p.fast([['Index', '100'], ['Sky', '310'], ['Quiz', '600'], ['Breathe', '500']])
+      p.fast([['INDEX', '100'], ['SKY', '310'], ['QUIZ', '600'], ['BREATHE', '500']])
       return p
     })
   },

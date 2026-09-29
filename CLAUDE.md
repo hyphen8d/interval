@@ -32,6 +32,8 @@ npm run health                     # tools/check-feeds.mjs -- probe every live s
 npm run watch                      # tools/feed-watch.mjs -- one scheduled check; --status
 npm run capture                    # tools/capture-fixtures.mjs -- recapture fixtures (network)
 npm run stamp                      # tools/stamp.js -- RUN BEFORE EVERY DEPLOY
+npm run markets                    # tools/fetch-markets.mjs -- markets.json for local use (network)
+npm run build                      # tools/build-site.mjs -- the public site into _site/
 npm run shoot                      # tools/shoot.mjs -- regenerate screenshots/ (headless Chrome)
 ```
 
@@ -174,15 +176,21 @@ day. `fillPages` packs exactly two screens. A second pass (a headline index
 plus a page per story, 111-129) was built and removed the same day as "too
 much": see the brief at the top.
 
-**Money has no crypto and no stock indices.** Crypto was a choice. For
-indices, no source serves them to a browser without a key. Currencies are the
-ECB's daily reference rates via Frankfurter, as a short series so each rate
-carries the previous working day for its ▲▼. Metals are gold-api.com. "The
-world" is the World Bank's five world figures in one request, with the
-population grown to this second from its latest mid-year figure. **Pause** is
-local or editorial: a quote API that browsers can use didn't exist
-(ZenQuotes has no CORS), so the thoughts live in `editorial.json`, editable in
-the dashboard.
+**Money has no crypto, and its markets are built, not fetched.** Crypto was a
+choice. Index levels have no source a browser can read (Yahoo and Nasdaq answer
+without CORS; the rest need keys), so `tools/fetch-markets.mjs` fetches FRED's
+daily closes (Dow, S&P 500, Nasdaq, Nikkei, VIX, 10-year yield, WTI, Brent;
+no FTSE or DAX, which FRED can't carry) in the **deploy workflow** and
+publishes `markets.json` beside the site. Page 401 reads it like any feed,
+shows each row's own close date, and says so if the file hasn't been rebuilt
+in three days. `check-feeds` probes the live copy, so a stopped schedule shows
+up as a failing source. `markets.json` is gitignored: run `npm run markets`
+for a local copy. Currencies are the ECB's daily rates via Frankfurter, with
+the previous working day for ▲▼. "The world" is the World Bank's five world
+figures, with the population grown to this second. **Did you know** (102) is a
+curated list of short tech, gaming and hacking facts in `editorial.json`,
+eight a day, a different eight each day. Wikipedia's own DYK was too deep and
+can't be steered to a subject. **Pause** is local or editorial.
 
 `tests/fixtures/` are real captures (see its README). A fake built from a spec
 proves only that you read your own assumption. That's SIGNAL's STATION BREAK
@@ -199,6 +207,17 @@ keeps the record (committed); `strikes` counts consecutive failures.
 `tools/feed-watch.mjs` notifies only at 2 strikes, so a finding has to be
 seen twice (SIGNAL's watch cried wolf for five days before it learned
 that). Clean runs say nothing.
+
+## Deploying
+
+GitHub Pages, **built by Actions** (`.github/workflows/pages.yml`), not served
+from a branch. The workflow runs on every push to main and twice each weekday
+on a schedule. It fetches the market closes, assembles `_site/` with
+`tools/build-site.mjs` (the servers' static allowlist minus `tools/`, so a
+stray file in the working tree never goes public), and deploys it. Run
+`npm run stamp` before pushing an app change (SHIP does it). A scheduled run
+doesn't restamp, because only `markets.json` changed and the set fetches that
+like a feed.
 
 ## The admin backend
 

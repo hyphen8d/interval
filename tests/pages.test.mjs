@@ -161,8 +161,11 @@ test('every page the seven sections cycle through exists, and each section is on
 test('facts, born today and a thought: one bite a screen', async () => {
   const ctx = ctxWith()
   const facts = pageDef('102', ctx).render(ctx)
-  assert.equal(facts.length, DATA.dyk.facts.length)
-  assert.match(facts[0].lines().join(' '), /propensity to blow bubbles/)
+  const { factsFor, FACTS_PER_DAY } = await import('../pages.js')
+  assert.equal(facts.length, FACTS_PER_DAY)
+  const today = factsFor(editorial.facts, NOW), tomorrow = factsFor(editorial.facts, NOW + 864e5)
+  assert.notDeepEqual(today, tomorrow, 'a different eight each day')
+  assert.ok(facts.every(p => ['TECH', 'GAMES', 'HACKING'].includes(p.lines()[5].trim())))
   const { pickBirths } = await import('../pages.js')
   const many = Array.from({ length: 200 }, (_, i) => ({ year: 2000 - i, text: `Person ${i}, someone` }))
   const picked = pickBirths(many)
@@ -174,14 +177,17 @@ test('facts, born today and a thought: one bite a screen', async () => {
   assert.ok(editorial.thoughts.some(t => thought.includes(t.text.slice(0, 20))))
 })
 
-test('money: the dollar against the world with the day\'s move, metals per ounce, the world in numbers', async () => {
+test('money: the dollar against the world, the markets at the close, the world in numbers', async () => {
   const ctx = ctxWith()
   const fxPage = pageDef('400', ctx).render(ctx)[0].lines().join('\n')
   assert.match(fxPage, /EUR\s+Euro\s+0\.8789 ▲ 0\.22%/)
   assert.match(fxPage, /JPY\s+Yen\s+156\.9 ▼ 0\.45%/)
-  const metals = pageDef('401', ctx).render(ctx)[0]
-  assert.ok(metals.cells.some(r => r.some(c => c.dh === 1)), 'the prices are big')
-  assert.match(metals.lines().join(' '), /OUNCE OF GOLD = 68 OF SILVER/)
+  const mk = pageDef('401', ctx).render(ctx)[0].lines().join('\n')
+  assert.match(mk, /DOW JONES\s+51,481\.51 ▼ 0\.67%/)
+  assert.match(mk, /CLOSE 28 SEP/)
+  assert.match(mk, /US 10-YEAR YIELD\s+5\.17%/)
+  const stale = { ...ctx, now: Date.parse(DATA.markets.at) + 5 * 864e5 }
+  assert.match(pageDef('401', stale).render(stale)[0].lines().join(' '), /PRICES NOT REFRESHED SINCE/)
   const { worldPopulationNow } = await import('../pages.js')
   const a = worldPopulationNow(DATA.world, NOW), b = worldPopulationNow(DATA.world, NOW + 60000)
   assert.ok(a > 8.2e9 && a < 8.4e9)

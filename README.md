@@ -9,10 +9,10 @@ Seven sections, every page readable at a glance:
 
 | | pages |
 | --- | --- |
-| **News** | 101 headlines, 102 did you know |
+| **News** | 101 headlines, 102 did you know (tech, games, hacking) |
 | **Today** | 200 on this day, 201 born today |
 | **Weather** | 300 today, 301 five days, 310 the sky tonight, 320 space weather, 330 earthquakes |
-| **Money** | 400 currencies, 401 gold and silver, 410 the world in numbers |
+| **Money** | 400 currencies, 401 world markets at the close, 410 the world in numbers |
 | **Pause** | 500 breathe, 501 a thought for today |
 | **Quiz** | 600 |
 | **Gallery** | 700 |
@@ -53,10 +53,12 @@ couldn't reach them, but a keyboard can.
 ## Where the pages come from
 
 Every source is keyless and open to browsers, because this is a static site
-with no server behind it: Wikipedia (In the news, Current events, Did you
-know, On this day), Open-Meteo, NOAA's Space Weather Prediction Center,
-USGS, the European Central Bank's reference rates via Frankfurter,
-gold-api.com and the World Bank. The moon and the breathing page are worked
+with no server behind it: Wikipedia (In the news, Current events, On this
+day), Open-Meteo, NOAA's Space Weather Prediction Center, USGS, the European
+Central Bank's reference rates via Frankfurter, and the World Bank. Market
+closes are the exception: nothing serves them to a browser, so the deploy
+workflow fetches them from FRED twice each weekday and publishes them with
+the site. The moon and the breathing page are worked
 out on the set. When a source is late the page says how old its copy is, and
 when one fails the page says it's off air. The set never hides either.
 

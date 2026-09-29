@@ -261,7 +261,11 @@ export class Page {
     this.fastext.forEach((e, i) => {
       if (!e) return
       const col = FASTEXT_COLOURS[i], x0 = i * FASTEXT_SLOT
-      const label = clip(e[0], FASTEXT_CAP)
+      // One word, capitals, eight letters at most, centred on a nine-cell
+      // cap (2026-09-28): mixed-case two-word labels ("This day", "Locate
+      // me") sat off-centre and read as leftovers. The lint holds the rule;
+      // this only makes sure a stray lower-case label still draws right.
+      const label = clip(String(e[0]).toUpperCase(), FASTEXT_CAP - 1)
       this.band(FASTEXT_ROW, col, x0, x0 + FASTEXT_CAP)
       this.text(FASTEXT_ROW, x0 + Math.floor((FASTEXT_CAP - label.length) / 2), label, col === RED ? WHITE : BLACK)
     })

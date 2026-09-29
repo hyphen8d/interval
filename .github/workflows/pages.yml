@@ -1,0 +1,60 @@
+# INTERVAL -- build and publish the site to GitHub Pages.
+#
+# On every push to main, and on a schedule. The schedule is what keeps page
+# 401 current: market closes come from FRED, which a browser cannot read
+# (no CORS), so tools/fetch-markets.mjs fetches them HERE and they are
+# published beside the site as markets.json. Nothing else is built -- there
+# is no build step -- so a scheduled run republishes the same app with fresh
+# closes. The build stamp does not change on a scheduled run: the code did
+# not, and markets.json is fetched by the set like any feed, not imported.
+#
+# Remember `npm run stamp` (SHIP does it) before pushing a change to the app.
+
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # 13:30 and 22:30 UTC, weekdays: after FRED's morning update, and after
+    # the US close. FRED's closes are a day behind; twice is plenty.
+    - cron: '30 13,22 * * 1-5'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # A failed fetch must not stop the deploy: the site goes out without
+      # markets.json and page 401 says it is off air, rather than the whole
+      # service staying on yesterday's build.
+      - name: Fetch market closes
+        run: node tools/fetch-markets.mjs || echo "::warning::market closes could not be fetched"
+      - name: Assemble the site
+        run: node tools/build-site.mjs --out=_site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

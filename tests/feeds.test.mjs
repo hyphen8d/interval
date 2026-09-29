@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  parseITN, parseOnThisDay, parseQuakes, parseKp, parseForecast, parseDYK, parseRates, parseMetal,
+  parseITN, parseOnThisDay, parseQuakes, parseKp, parseForecast, parseRates, parseMarkets,
   parseWorldBank, shortPlace, decodeEntities, FeedCache, backoffMs, staleAfter, FEEDS, forecastUrl,
 } from '../feeds.js'
 
@@ -139,13 +139,6 @@ test('Current events: the innermost items only, sources dropped, filed by sectio
   assert.equal(parseCurrentEvents(all['2026_September_27']).length, 18)
 })
 
-test('Did you know: the "...that" facts, as questions, without the photo asides', () => {
-  const { facts } = parseDYK(fx('wiki-dyk.json'))
-  assert.equal(facts.length, 9)
-  assert.ok(facts.every(f => f.endsWith('?') && !/^\.\.\./.test(f) && !/pictured/.test(f)))
-  assert.ok(!facts.some(f => /^(verify|reset|purge)$/i.test(f)), 'not the template toolbar')
-})
-
 test("rates: each against the dollar, with the working day before for its arrow", () => {
   const r = parseRates(fx('frankfurter-usd.json'))
   assert.equal(r.date, '2026-09-28')
@@ -154,12 +147,20 @@ test("rates: each against the dollar, with the working day before for its arrow"
   assert.deepEqual([eur.rate, eur.prev], [0.87889, 0.87696])
 })
 
-test('metals and the World Bank: a price each, a value and year each', () => {
-  const m = parseMetal(fx('metals.json').XAU)
-  assert.equal(m.name, 'Gold')
-  assert.ok(m.price > 1000)
+test('markets and the World Bank: a close each, a value and year each', () => {
+  const m = parseMarkets(fx('markets.json'))
+  assert.equal(m.series[0].name, 'DOW JONES')
+  assert.ok(m.series.every(s => Number.isFinite(s.value) && /^\d{4}-\d\d-\d\d$/.test(s.date)))
+  assert.throws(() => parseMarkets({ series: [] }))
   const w = parseWorldBank(fx('worldbank-world.json'))
   assert.equal(w['SP.POP.TOTL'].year, 2025)
   assert.ok(w['FP.CPI.TOTL.ZG'].value > 0)
   assert.throws(() => parseWorldBank([{}, []]))
+})
+
+test('FRED CSV: the last two real values, skipping holidays', async () => {
+  const { parseFredCsv } = await import('../tools/fetch-markets.mjs')
+  const r = parseFredCsv('observation_date,DJIA\n2026-09-24,100\n2026-09-25,101.5\n2026-09-28,.\n')
+  assert.deepEqual(r, { date: '2026-09-25', value: 101.5, prevDate: '2026-09-24', prev: 100 })
+  assert.throws(() => parseFredCsv('observation_date,DJIA\n'))
 })

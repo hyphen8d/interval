@@ -9,7 +9,7 @@ import * as Pages from '../pages.js'
 
 test('switching on lands on the welcome, 190', async () => {
   const h = await boot()
-  assert.match(h.row(0), /^ P190 INTERVAL 190 Mon 28 Sep 20:00\/0\d$/)
+  assert.match(h.row(0), /^ P190 INTERVAL\s+190\s+Mon 28 Sep\s+20:00\/0\d$/)
   assert.ok(h.find('Press N and the set turns its own'))
   assert.equal(h.colourAt(3, 1).bg, RED, 'the masthead is in colour: the news magazine, 1xx')
   h.shutdown()
@@ -33,11 +33,11 @@ test('keying a page: the old page stays up while the header rolls, then the new 
   h.key('0')
   h.advance(MIN_WAIT_MS - 100)
   assert.ok(h.find('Bite-sized pages'), 'still the welcome: nothing arrives on request')
-  assert.match(h.row(0), / 2\d\d Mon/, 'the header is counting through magazine 2')
+  assert.match(h.row(0), /\s2\d\d\s+Mon/, 'the header is counting through magazine 2')
   await h.settle(3000)
   assert.ok(h.page().includes('ON THIS DAY'))
   assert.ok(h.find('28 SEP'), 'and the grid shows it')
-  assert.match(h.row(0), /^ P200 INTERVAL 200 /)
+  assert.match(h.row(0), /^ P200 INTERVAL\s+200 /)
   h.shutdown()
 })
 
@@ -162,7 +162,7 @@ test('poor reception garbles the page and never the header', async () => {
   const h = await boot({ query: '?rx=0.25' })
   await h.go('101', 3500)
   assert.ok(!h.find('Brisbane Lions win their third'), 'the text is damaged')
-  assert.match(h.row(0), /^ P101 INTERVAL 101 Mon 28 Sep/, 'the header is not')
+  assert.match(h.row(0), /^ P101 INTERVAL\s+101\s+Mon 28 Sep/, 'the header is not')
   assert.ok(h.crt.params.noise > 0.2, 'and the tube shows it')
   h.shutdown()
 })

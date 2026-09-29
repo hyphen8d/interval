@@ -11,6 +11,8 @@
     "watch": "node tools/feed-watch.mjs",
     "capture": "node tools/capture-fixtures.mjs",
     "stamp": "node tools/stamp.js",
-    "shoot": "node tools/shoot.mjs"
+    "shoot": "node tools/shoot.mjs",
+    "markets": "node tools/fetch-markets.mjs",
+    "build": "node tools/build-site.mjs"
   }
 }

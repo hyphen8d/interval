@@ -105,6 +105,7 @@ export const TASKS = {
   stamp: { label: 'bump build stamp', cmd: () => ['node', ['tools/stamp.js']] },
   health: { label: 'probe every source', network: true, cmd: () => ['node', ['tools/check-feeds.mjs']] },
   capture: { label: 'recapture test fixtures', network: true, cmd: () => ['node', ['tools/capture-fixtures.mjs']] },
+  markets: { label: 'fetch market closes (markets.json)', network: true, cmd: () => ['node', ['tools/fetch-markets.mjs']] },
 }
 
 function run(cmd, args, emit) {
@@ -203,6 +204,7 @@ export function normaliseEditorial(e) {
     quiz: (e?.quiz || []).map(q => ({ q: str(q.q), a: str(q.a) })),
     fourkeys: (e?.fourkeys || []).map(q => ({ q: str(q.q), options: (q.options || []).map(str), answer: Number(q.answer) })),
     thoughts: (e?.thoughts || []).map(t => ({ text: str(t.text), by: str(t.by) })),
+    facts: (e?.facts || []).map(f => ({ tag: str(f.tag).toUpperCase(), text: str(f.text) })),
   }
 }
 

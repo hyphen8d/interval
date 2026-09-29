@@ -24,6 +24,7 @@
 //   node tools/check-feeds.mjs --only=itn
 
 import { readFileSync, writeFileSync, renameSync } from 'node:fs'
+import { MARKETS_LIVE_URL } from '../feeds.js'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -50,9 +51,11 @@ export function summarise(id, data) {
       return { items: data.readings.length, detail: `Kp ${data.latest.kp} at ${data.latest.time}`, staleHours: Math.round(age) }
     }
     case 'weather': return { items: data.days.length, detail: `${data.days.length} days` }
-    case 'dyk': return { items: data.facts.length, detail: `${data.facts.length} facts` }
     case 'rates': return { items: data.rates.length, detail: `${data.rates.length} rates on ${data.date}` }
-    case 'metals': return { items: data.metals.length, detail: data.metals.map(m => `${m.name} $${Math.round(m.price)}`).join(', ') }
+    case 'markets': {
+      const age = (Date.now() - Date.parse(data.at)) / 3600e3
+      return { items: data.series.length, detail: `${data.series.length} series, built ${Math.round(age)}h ago`, staleHours: Math.round(age) > 96 ? Math.round(age) : 0 }
+    }
     case 'world': return { items: Object.keys(data).length, detail: `${Object.keys(data).length} world figures` }
     default: return { items: null, detail: '' }
   }
@@ -73,6 +76,9 @@ export async function probe(id, feed, { fetchImpl = globalThis.fetch, now = new 
   }
   const env = {
     date: () => now, location: PROBE_LOCATION, units: 'C',
+    // markets.json is built by the deploy workflow, so the probe checks the
+    // live copy: "ok" means the workflow is producing it.
+    marketsUrl: MARKETS_LIVE_URL,
   }
   const t0 = Date.now()
   const out = { id, title: feed.title, checkedAt: new Date().toISOString() }
@@ -94,7 +100,7 @@ export async function probe(id, feed, { fetchImpl = globalThis.fetch, now = new 
     out.error = `no access-control-allow-origin on ${noCors[0].url} -- a browser would refuse it`
   }
   if (out.ok && out.items === 0) { out.ok = false; out.error = 'answered, but with nothing in it' }
-  if (out.ok && out.staleHours > 12) { out.ok = false; out.error = `latest reading is ${out.staleHours}h old` }
+  if (out.ok && out.staleHours > 12) { out.ok = false; out.error = id === 'markets' ? `markets.json was last built ${out.staleHours}h ago: is the deploy workflow's schedule running?` : `latest reading is ${out.staleHours}h old` }
   return out
 }
 

@@ -15,9 +15,8 @@ unused fields dropped) and otherwise untouched.
 | usgs-4.5-day.json | earthquake.usgs.gov summary/4.5_day.geojson |
 | swpc-kp.json | services.swpc.noaa.gov products/noaa-planetary-k-index.json |
 | open-meteo.json | api.open-meteo.com forecast, 5 days, New York |
-| wiki-dyk.json | en.wikipedia.org action API, parse of Template:Did_you_know |
 | frankfurter-usd.json | api.frankfurter.dev, ECB rates against USD, 2026-09-16 to 09-28 |
-| metals.json | api.gold-api.com price/XAU, XAG, XPT, keyed by symbol |
+| markets.json | tools/fetch-markets.mjs's own output: FRED daily closes, eight series |
 | worldbank-world.json | api.worldbank.org, five world indicators, most recent value each |
 
 Refresh them with `node tools/capture-fixtures.mjs` when a source changes
