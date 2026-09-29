@@ -45,13 +45,8 @@ export function summarise(id, data) {
     case 'itn': return { items: data.stories.length, detail: `${data.stories.length} stories, ${data.deaths.length} deaths` }
     case 'events': return { items: data.items.length, detail: `${data.items.length} current events, today and yesterday` }
     case 'otd': return { items: data.selected.length + data.events.length, detail: `${data.selected.length} selected, ${data.events.length} events` }
-    case 'quakes': return { items: data.length, detail: `${data.length} quakes in the past day` }
-    case 'kp': {
-      const age = (Date.now() - Date.parse(data.latest.time + (data.latest.time.endsWith('Z') ? '' : 'Z'))) / 3600e3
-      return { items: data.readings.length, detail: `Kp ${data.latest.kp} at ${data.latest.time}`, staleHours: Math.round(age) }
-    }
     case 'weather': return { items: data.days.length, detail: `${data.days.length} days` }
-    case 'rates': return { items: data.rates.length, detail: `${data.rates.length} rates on ${data.date}` }
+    case 'cities': return { items: data.cities.length, detail: `${data.cities.length} cities, ${data.cities[0].name} ${data.cities[0].temp}${data.units}` }
     case 'markets': {
       const age = (Date.now() - Date.parse(data.at)) / 3600e3
       return { items: data.series.length, detail: `${data.series.length} series, built ${Math.round(age)}h ago`, staleHours: Math.round(age) > 96 ? Math.round(age) : 0 }

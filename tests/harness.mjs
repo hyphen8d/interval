@@ -29,7 +29,6 @@ let fontCache = null
 export function fixtureFetch(url) {
   const u = String(url)
   if (u.includes('Template:In_the_news')) return fixture('wiki-itn.json')
-  if (u.includes('api.frankfurter.dev')) return fixture('frankfurter-usd.json')
   if (u === 'markets.json' || u.endsWith('/markets.json')) return fixture('markets.json')
   if (u.includes('api.worldbank.org')) return fixture('worldbank-world.json')
   // Keyed by the portal's own title; a day not captured is a 404, which is
@@ -38,9 +37,8 @@ export function fixtureFetch(url) {
   const ce = u.match(/Portal:Current_events\/(\w+)&/)
   if (ce) return fixture('wiki-current-events.json')[ce[1]] ?? null
   if (u.includes('/feed/onthisday/')) return fixture('wiki-onthisday.json')
-  if (u.includes('earthquake.usgs.gov')) return fixture('usgs-4.5-day.json')
-  if (u.includes('swpc.noaa.gov')) return fixture('swpc-kp.json')
-  if (u.includes('api.open-meteo.com')) return fixture('open-meteo.json')
+  // Twelve comma-separated latitudes is the cities request; one is local.
+  if (u.includes('api.open-meteo.com')) return /latitude=[^&]*%2C|latitude=[^&]*,/.test(u) ? fixture('open-meteo-cities.json') : fixture('open-meteo.json')
   return null
 }
 

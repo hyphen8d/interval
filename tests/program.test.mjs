@@ -124,15 +124,6 @@ test('LEFT and RIGHT step through subpages and hold the one you chose', async ()
   h.shutdown()
 })
 
-test('REVEAL shows the hidden answers', async () => {
-  const h = await boot()
-  await h.go('600', 3500)
-  assert.ok(!h.find('LINE 21'))
-  h.key('r'); h.advance(50)
-  assert.ok(h.find('LINE 21'))
-  h.shutdown()
-})
-
 test('SIZE shows the top half at double height, then the bottom, then normal', async () => {
   const h = await boot()
   // Row 9 of the welcome is plain text; SIZE draws it as stretched glyphs.
@@ -250,7 +241,7 @@ test('H while cycling holds the section; H again moves on', async () => {
 
 test('cycling skips the weather pages that would only ask where you are', async () => {
   const h = await boot()
-  assert.deepEqual(h.program.cyclePages(2), ['310', '320', '330'])
+  assert.deepEqual(h.program.cyclePages(2), ['302'], 'only the cities page, until the set knows where it is')
   h.shutdown()
 })
 

@@ -5,16 +5,15 @@ and leave to cycle.
 
 ![Page 100, the index](screenshots/hero.jpg)
 
-Seven sections, every page readable at a glance:
+Six sections, every page readable at a glance:
 
 | | pages |
 | --- | --- |
 | **News** | 101 headlines, 102 did you know (tech, games, hacking) |
 | **Today** | 200 on this day, 201 born today |
-| **Weather** | 300 today, 301 five days, 310 the sky tonight, 320 space weather, 330 earthquakes |
-| **Money** | 400 currencies, 401 world markets at the close, 410 the world in numbers |
+| **Weather** | 300 today, 301 five days (both for where you are), 302 twelve US cities |
+| **Money** | 401 world markets at the close, 410 the world in numbers |
 | **Pause** | 500 breathe, 501 a thought for today |
-| **Quiz** | 600 |
 | **Gallery** | 700 |
 
 Press **N** and the set turns its own pages, section by section. **H** keeps
@@ -54,12 +53,10 @@ couldn't reach them, but a keyboard can.
 
 Every source is keyless and open to browsers, because this is a static site
 with no server behind it: Wikipedia (In the news, Current events, On this
-day), Open-Meteo, NOAA's Space Weather Prediction Center, USGS, the European
-Central Bank's reference rates via Frankfurter, and the World Bank. Market
+day), Open-Meteo and the World Bank. Market
 closes are the exception: nothing serves them to a browser, so the deploy
 workflow fetches them from FRED twice each weekday and publishes them with
-the site. The moon and the breathing page are worked
-out on the set. When a source is late the page says how old its copy is, and
+the site. The breathing page is worked out on the set. When a source is late the page says how old its copy is, and
 when one fails the page says it's off air. The set never hides either.
 
 The weather needs your location. The set asks when you press red on page

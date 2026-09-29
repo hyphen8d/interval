@@ -12,10 +12,8 @@ unused fields dropped) and otherwise untouched.
 | wiki-itn.json | en.wikipedia.org action API, parse of Template:In_the_news |
 | wiki-current-events.json | en.wikipedia.org action API, parse of Portal:Current_events for 2026_September_28 and _27, keyed by title |
 | wiki-onthisday.json | en.wikipedia.org REST, feed/onthisday/all/09/28 (trimmed) |
-| usgs-4.5-day.json | earthquake.usgs.gov summary/4.5_day.geojson |
-| swpc-kp.json | services.swpc.noaa.gov products/noaa-planetary-k-index.json |
+| open-meteo-cities.json | api.open-meteo.com forecast, twelve US cities in one request |
 | open-meteo.json | api.open-meteo.com forecast, 5 days, New York |
-| frankfurter-usd.json | api.frankfurter.dev, ECB rates against USD, 2026-09-16 to 09-28 |
 | markets.json | tools/fetch-markets.mjs's own output: FRED daily closes, eight series |
 | worldbank-world.json | api.worldbank.org, five world indicators, most recent value each |
 

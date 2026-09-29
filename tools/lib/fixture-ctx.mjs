@@ -23,10 +23,8 @@ export async function fixtureData() {
   return {
     itn: F.parseITN(fx('wiki-itn.json')),
     otd: F.parseOnThisDay(fx('wiki-onthisday.json')),
-    quakes: F.parseQuakes(fx('usgs-4.5-day.json')),
-    kp: F.parseKp(fx('swpc-kp.json')),
     weather: F.parseForecast(fx('open-meteo.json')),
-    rates: F.parseRates(fx('frankfurter-usd.json')),
+    cities: F.parseCities(fx('open-meteo-cities.json')),
     markets: F.parseMarkets(fx('markets.json')),
     world: F.parseWorldBank(fx('worldbank-world.json')),
     events: fixtureEvents(F),

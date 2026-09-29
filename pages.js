@@ -43,7 +43,6 @@ const {
   BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, COLS,
 } = await import(`./teletext.js?v=${V}`)
 const { KEYS, FASTEXT_ALT } = await import(`./constants.js?v=${V}`)
-const { moon, litAt, dayLength } = await import(`./sky.js?v=${V}`)
 const { FEEDS, staleAfter } = await import(`./feeds.js?v=${V}`)
 const { drawLines } = await import(`./markup.js?v=${V}`)
 
@@ -61,7 +60,7 @@ export const MAGAZINES = {
   3: { name: 'WEATHER', band: BLUE, ink: CYAN, accent: YELLOW },
   4: { name: 'MONEY', band: YELLOW, ink: BLUE, accent: RED },
   5: { name: 'PAUSE', band: CYAN, ink: BLUE, accent: BLUE },
-  6: { name: 'QUIZ', band: GREEN, ink: BLACK, accent: BLACK },
+  6: { name: 'SPARE', band: GREEN, ink: BLACK, accent: BLACK },
   7: { name: 'GALLERY', band: WHITE, ink: BLUE, accent: RED },
   8: { name: 'SERVICE', band: BLUE, ink: WHITE, accent: YELLOW },
 }
@@ -74,10 +73,9 @@ export const MAGAZINES = {
 export const SECTIONS = [
   { name: 'NEWS', pages: [['HEADLINES', '101'], ['FACTS', '102']] },
   { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201']] },
-  { name: 'WEATHER', pages: [['TODAY', '300'], ['5-DAY', '301'], ['SKY', '310'], ['SPACE', '320'], ['QUAKES', '330']] },
-  { name: 'MONEY', pages: [['CURRENCIES', '400'], ['MARKETS', '401'], ['THE WORLD', '410']] },
+  { name: 'WEATHER', pages: [['TODAY', '300'], ['5-DAY', '301'], ['US CITIES', '302']] },
+  { name: 'MONEY', pages: [['MARKETS', '401'], ['THE WORLD', '410']] },
   { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501']] },
-  { name: 'QUIZ', pages: [['QUIZ', '600']] },
   { name: 'GALLERY', pages: [['PICTURES', '700']] },
 ]
 export const sectionOf = (num) => SECTIONS.findIndex(s => s.pages.some(([, n]) => n === String(num).toUpperCase()))
@@ -274,7 +272,7 @@ page('100', 'Index', {
     // Keyboard on a desktop, taps on a phone -- no mouse (pointer.js).
     p.text(22, 1, ctx.env.touch ? 'TAP A NUMBER, OR KEY IT IN' : 'KEY A PAGE NUMBER', MAGENTA)
     p.text(23, 1, ctx.env.touch ? 'CYCLE: THE CYCLE BUTTON' : 'N: LET THE SET CYCLE THE PAGES', WHITE)
-    p.fast([['NEWS', '101'], ['WEATHER', '300'], ['MONEY', '400'], ['PAUSE', '500']])
+    p.fast([['NEWS', '101'], ['WEATHER', '302'], ['MONEY', '401'], ['PAUSE', '500']])
     return [p]
   },
 })
@@ -422,7 +420,7 @@ page('199', 'Help: using the set', {
     }
     if (ctx.env.touch) p.wrap(r + 1, 1, 'Or tap a page number or a coloured key. Swipe for pages and subpages.', 38, WHITE, 21)
     p.text(22, 1, 'The top line counts while you wait.', GREEN)
-    p.fast([['INDEX', '100'], ['WELCOME', '190'], ['NEWS', '101'], ['QUIZ', '600']])
+    p.fast([['INDEX', '100'], ['WELCOME', '190'], ['NEWS', '101'], ['PAUSE', '500']])
     return [p]
   },
 })
@@ -484,7 +482,10 @@ page('200', 'On this day', {
   subpageMs: 12000,
   render(ctx) {
     return gate(ctx, '200', 'ON THIS DAY', ['otd'], ({ otd }) => {
-      const picks = otd.selected.length ? otd.selected : otd.events.slice(0, 8)
+      // Six, spread across the day's picks: eighteen screens of history is a
+      // lecture, and this is a glance (2026-09-28).
+      const pool = otd.selected.length ? otd.selected : otd.events
+      const picks = pickEvenly(pool, 6)
       // "28 SEP": the masthead's small print has eleven columns.
       const date = ctx.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toUpperCase()
       return picks.map((e, i) => {
@@ -502,15 +503,16 @@ page('200', 'On this day', {
 
 /**
  * Born today: one person a screen. Wikipedia's list runs newest first and
- * is hundreds long, most of it recent athletes, so a dozen are taken evenly
- * across it -- a spread of eras rather than the first twelve footballers.
+ * is hundreds long, most of it recent athletes, so six are taken evenly
+ * across it -- a spread of eras rather than the first six footballers.
  * The entry is "Name, what they were (d. year)"; the name goes big.
  */
-export function pickBirths(births, n = 12) {
-  if (births.length <= n) return births.slice()
-  const step = births.length / n
-  return Array.from({ length: n }, (_, i) => births[Math.floor(i * step + step / 2)])
+export function pickEvenly(list, n) {
+  if (list.length <= n) return list.slice()
+  const step = list.length / n
+  return Array.from({ length: n }, (_, i) => list[Math.floor(i * step + step / 2)])
 }
+export const pickBirths = (births, n = 6) => pickEvenly(births, n)
 page('201', 'Born today', {
   feeds: ['otd'],
   subpageMs: 10000,
@@ -554,7 +556,7 @@ function weatherGate(num, title, ctx, fn) {
     ]
     let r = BODY_TOP + 3
     for (const para of copy) r = p.wrap(r, 1, para, 38, WHITE) + 1
-    p.fast([loc === 'insecure' || loc === 'unsupported' || loc === 'asking' ? null : ['LOCATE', 'locate'], ['SKY', '310'], ['QUAKES', '330'], ['INDEX', '100']])
+    p.fast([loc === 'insecure' || loc === 'unsupported' || loc === 'asking' ? null : ['LOCATE', 'locate'], ['CITIES', '302'], ['NEWS', '101'], ['INDEX', '100']])
     return [p]
   }
   return gate(ctx, num, title, ['weather'], ({ weather }) => fn(weather))
@@ -588,7 +590,7 @@ page('300', 'Weather: today', {
       }
       p.text(22, 1, '% IS THE CHANCE OF RAIN', MAGENTA)
       creditLine(p, ctx, 'weather')
-      p.fast([['5-DAY', '301'], ['SKY', '310'], ['SPACE', '320'], ['INDEX', '100']])
+      p.fast([['5-DAY', '301'], ['CITIES', '302'], ['NEWS', '101'], ['INDEX', '100']])
       return [p]
     })
   },
@@ -618,115 +620,36 @@ page('301', 'Weather: five days', {
         p.bar(r + 1, 6 + start, Math.max(2, b - start * 2), d.hi >= 80 || (w.units === 'C' && d.hi >= 27) ? RED : YELLOW)
       })
       creditLine(p, ctx, 'weather')
-      p.fast([['NOW', '300'], ['SKY', '310'], ['SPACE', '320'], ['INDEX', '100']])
+      p.fast([['NOW', '300'], ['CITIES', '302'], ['NEWS', '101'], ['INDEX', '100']])
       return [p]
     })
   },
 })
 
-page('310', 'Sky tonight', {
+/** Twelve US cities at once (2026-09-28): the weather page that needs no
+ *  location, so cycling can show it to everyone. */
+page('302', 'Weather: US cities', {
+  feeds: ['cities'],
   render(ctx) {
-    const m = moon(ctx.now)
-    const p = new Page()
-    masthead(p, '310', 'SKY TONIGHT', { right: 'THE MOON' })
-    const art = pixels(24, 24, (x, y) => {
-      const lit = litAt((x + 0.5 - 12) / 11.5, (y + 0.5 - 12) / 11.5, m.phase)
-      return lit === null ? null : lit ? 'W' : 'B'
-    })
-    p.art(BODY_TOP, 1, art, { W: WHITE, B: BLUE })
-    p.text(BODY_TOP, 16, 'THE MOON', YELLOW)
-    p.text(BODY_TOP + 2, 16, m.name, WHITE)
-    p.text(BODY_TOP + 4, 16, `LIT   ${Math.round(m.lit * 100)}%`, GREEN)
-    p.text(BODY_TOP + 5, 16, `AGE   ${m.age.toFixed(1)} DAYS`, GREEN)
-    const full = m.toFull < 1 ? 'FULL TONIGHT' : `FULL IN ${Math.round(m.toFull)} DAYS`
-    const nw = m.toNew < 1 ? 'NEW TONIGHT' : `NEW IN ${Math.round(m.toNew)} DAYS`
-    p.text(BODY_TOP + 7, 16, m.phase < 0.5 ? full : nw, CYAN)
-    const w = ctx.entry('weather')?.data
-    const today = ctx.env.locationState === 'granted' ? w?.days?.[0] : null
-    let r = BODY_TOP + 10
-    if (today) {
-      p.text(r, 1, `SUNRISE ${today.sunrise}   SUNSET ${today.sunset}`, YELLOW)
-      const len = dayLength(today.sunrise, today.sunset)
-      if (len) p.text(r + 1, 1, `DAYLIGHT ${len}`, WHITE)
-      r += 3
-    } else {
-      r = p.wrap(r, 1, 'Sunrise and sunset need your location: see page 300.', 38, WHITE) + 1
-    }
-    p.wrap(r, 1, 'Worked out on the set from the date. This page needs no signal at all.', 38, GREEN)
-    p.fast([['WEATHER', '300'], ['SPACE', '320'], ['BREATHE', '500'], ['INDEX', '100']])
-    return [p]
-  },
-})
-
-page('320', 'Space weather', {
-  feeds: ['kp'],
-  render(ctx) {
-    return gate(ctx, '320', 'SPACE WEATHER', ['kp'], ({ kp }) => {
+    return gate(ctx, '302', 'US CITIES', ['cities'], ({ cities }) => {
       const p = new Page()
-      masthead(p, '320', 'SPACE WEATHER', { right: 'AURORA' })
-      const now = kp.latest.kp
-      const level = now >= 7 ? ['SEVERE STORM', MAGENTA] : now >= 5 ? ['GEOMAGNETIC STORM', RED] : now >= 4 ? ['ACTIVE', YELLOW] : ['QUIET', GREEN]
-      p.text(BODY_TOP, 1, 'PLANETARY K-INDEX NOW', CYAN)
-      p.double(BODY_TOP + 1, 1, now.toFixed(1), WHITE)
-      p.double(BODY_TOP + 1, 8, level[0], level[1])
-      // The last 24 readings (3 days), as a bar chart: one column each,
-      // three rows high, so 18 half-blocks of scale for Kp 0-9.
-      const last = kp.readings.slice(-24)
-      const top = BODY_TOP + 5
-      p.text(top, 1, 'LAST 3 DAYS', CYAN)
-      last.forEach((rd, i) => {
-        const units = Math.round(Math.min(9, rd.kp) / 9 * 9)
-        const col = rd.kp >= 5 ? RED : rd.kp >= 4 ? YELLOW : GREEN
-        for (let k = 0; k < 3; k++) {
-          const fill = Math.max(0, Math.min(3, units - (2 - k) * 3))
-          const bits = [0, 48, 60, 63][fill]
-          if (bits) p.mosaic(top + 1 + k, 2 + i, bits, col)
-        }
+      masthead(p, '302', 'US CITIES', { right: 'RIGHT NOW' })
+      p.text(BODY_TOP, 1, 'CITY', CYAN); p.text(BODY_TOP, 16, 'NOW', CYAN); p.text(BODY_TOP, 22, 'SKY', CYAN); p.text(BODY_TOP, 32, 'HI/LO', CYAN)
+      cities.cities.forEach((c, i) => {
+        const r = BODY_TOP + 2 + i
+        const hot = cities.units === 'F' ? c.temp >= 85 : c.temp >= 29
+        const cold = cities.units === 'F' ? c.temp <= 40 : c.temp <= 4
+        p.text(r, 1, c.name, i % 2 ? WHITE : YELLOW)
+        p.text(r, 15, `${c.temp}${cities.units}`.padStart(4), hot ? RED : cold ? CYAN : WHITE)
+        p.text(r, 22, clip(wmoWords(c.code)[2], 5), GREEN)
+        p.text(r, 30, `${c.hi}/${c.lo}`.padStart(8), WHITE)
       })
-      p.text(top + 4, 1, '0-3 QUIET   4 ACTIVE   5+ STORM', WHITE)
-      p.wrap(top + 6, 1, now >= 5
-        ? 'A storm this strong can push the aurora well south of the usual latitudes. Worth a look outside after dark.'
-        : 'Aurora is unlikely away from high latitudes at this level.', 38, WHITE)
-      creditLine(p, ctx, 'kp')
-      p.fast([['WEATHER', '300'], ['SKY', '310'], ['QUAKES', '330'], ['INDEX', '100']])
+      creditLine(p, ctx, 'cities')
+      p.fast([['TODAY', '300'], ['5-DAY', '301'], ['NEWS', '101'], ['INDEX', '100']])
       return [p]
     })
   },
 })
-
-page('330', 'Earthquakes', {
-  feeds: ['quakes'],
-  render(ctx) {
-    return gate(ctx, '330', 'EARTHQUAKES', ['quakes'], ({ quakes }) => {
-      const rows = quakes.slice(0, 32)
-      const per = 14
-      const chunks = []
-      for (let i = 0; i < Math.max(1, rows.length); i += per) chunks.push(rows.slice(i, i + per))
-      return chunks.map((chunk, i) => {
-        const p = new Page()
-        masthead(p, '330', 'EARTHQUAKES', { sub: i, subs: chunks.length, right: 'PAST DAY' })
-        p.text(BODY_TOP, 1, 'MAGNITUDE 4.5 AND OVER', CYAN)
-        p.text(BODY_TOP + 1, 1, 'TIME  MAG WHERE', YELLOW)
-        if (!rows.length) p.text(BODY_TOP + 3, 1, 'None in the past day.', WHITE)
-        chunk.forEach((q, k) => {
-          const r = BODY_TOP + 2 + k
-          const d = new Date(q.time)
-          p.text(r, 1, `${pad2(d.getHours())}${pad2(d.getMinutes())}`, CYAN)
-          p.text(r, 6, q.mag.toFixed(1), q.mag >= 6 ? RED : YELLOW)
-          p.text(r, 10, clip(q.place, 20), WHITE)
-          const col = q.mag >= 6.5 ? MAGENTA : q.mag >= 5.5 ? RED : YELLOW
-          p.bar(r, 31, Math.max(1, Math.round((q.mag - 4) * 3)), col)
-          if (q.tsunami) p.text(r, 30, 'T', MAGENTA)
-        })
-        p.text(22, 1, 'TIMES LOCAL.  T: TSUNAMI MESSAGE ISSUED', MAGENTA)
-        creditLine(p, ctx, 'quakes')
-        p.fast([['SPACE', '320'], ['WEATHER', '300'], ['MONEY', '400'], ['INDEX', '100']])
-        return p
-      })
-    })
-  },
-})
-
 
 // ---------------------------------------------------------------------------
 // Money: the world's numbers at a glance. No crypto (2026-09-28, by choice),
@@ -734,9 +657,6 @@ page('330', 'Earthquakes', {
 // without a key, and this site has no server to hide one behind.
 // ---------------------------------------------------------------------------
 
-const CURRENCY_NAMES = { EUR: 'Euro', GBP: 'Pound', JPY: 'Yen', CNY: 'Yuan', CAD: 'Canadian dollar', CHF: 'Swiss franc', AUD: 'Australian dollar', INR: 'Rupee' }
-/** A rate to four significant figures: 0.8789, 15.69, 156.9. */
-const sig = (x) => (x >= 100 ? x.toFixed(1) : x >= 10 ? x.toFixed(2) : x.toFixed(4))
 /** ▲ or ▼ and the day's change in percent, or blank when unchanged. */
 function move(now, prev) {
   if (!Number.isFinite(prev) || prev === 0) return null
@@ -744,34 +664,6 @@ function move(now, prev) {
   if (Math.abs(pct) < 0.005) return { mark: '=', pct: '0.00%', up: null }
   return { mark: pct > 0 ? '▲' : '▼', pct: `${Math.abs(pct).toFixed(2)}%`, up: pct > 0 }
 }
-
-page('400', 'Currencies', {
-  feeds: ['rates'],
-  render(ctx) {
-    return gate(ctx, '400', 'CURRENCIES', ['rates'], ({ rates }) => {
-      const p = new Page()
-      masthead(p, '400', 'CURRENCIES', { right: 'MONEY' })
-      p.text(BODY_TOP, 1, 'ONE US DOLLAR BUYS', CYAN)
-      const order = ['EUR', 'GBP', 'JPY', 'CNY', 'CAD', 'CHF', 'AUD', 'INR']
-      const byCode = Object.fromEntries(rates.rates.map(r => [r.code, r]))
-      let r = BODY_TOP + 2
-      for (const code of order) {
-        const x = byCode[code]
-        if (!x) continue
-        p.text(r, 1, code, YELLOW)
-        p.text(r, 6, CURRENCY_NAMES[code] || code, WHITE)
-        p.text(r, 24, sig(x.rate).padStart(8), WHITE)
-        const m = move(x.rate, x.prev)
-        if (m) { p.text(r, 33, m.mark, m.up === null ? WHITE : m.up ? GREEN : RED); p.text(r, 34, m.pct.padStart(6), m.up === null ? WHITE : m.up ? GREEN : RED) }
-        r += 2
-      }
-      p.text(22, 1, `${rates.date}  ▲ THE DOLLAR BUYS MORE`, CYAN)
-      creditLine(p, ctx, 'rates')
-      p.fast([['MARKETS', '401'], ['WORLD', '410'], ['NEWS', '101'], ['INDEX', '100']])
-      return [p]
-    })
-  },
-})
 
 /** 51,481.51 -> "51,481.51"; the index levels want their thousands. */
 const grouped = (x, dp = 2) => x.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })
@@ -807,7 +699,7 @@ page('401', 'World markets', {
       if (age > 3 * 864e5) p.text(21, 1, clip(`PRICES NOT REFRESHED SINCE ${shortDay(markets.at.slice(0, 10))}`, 38), RED)
       else p.text(21, 1, 'DAILY CLOSES, UPDATED EACH WEEKDAY', GREEN)
       creditLine(p, ctx, 'markets')
-      p.fast([['CURRENCY', '400'], ['WORLD', '410'], ['NEWS', '101'], ['INDEX', '100']])
+      p.fast([['WORLD', '410'], ['WEATHER', '302'], ['NEWS', '101'], ['INDEX', '100']])
       return [p]
     })
   },
@@ -849,7 +741,7 @@ page('410', 'The world in numbers', {
       line(BODY_TOP + 11, 'POPULATION GROWTH', 'SP.POP.GROW', v => `${v.toFixed(2)}%`)
       p.text(BODY_TOP + 13, 1, 'WHOLE WORLD, LATEST YEAR REPORTED', GREEN)
       creditLine(p, ctx, 'world')
-      p.fast([['CURRENCY', '400'], ['MARKETS', '401'], ['NEWS', '101'], ['INDEX', '100']])
+      p.fast([['MARKETS', '401'], ['WEATHER', '302'], ['NEWS', '101'], ['INDEX', '100']])
       return [p]
     })
   },
@@ -927,30 +819,6 @@ page('501', 'A thought', {
   },
 })
 
-page('600', 'Quiz', {
-  render(ctx) {
-    const qs = ctx.editorial.quiz || []
-    const per = 4
-    const chunks = []
-    for (let i = 0; i < Math.max(1, qs.length); i += per) chunks.push(qs.slice(i, i + per))
-    return chunks.map((chunk, i) => {
-      const p = new Page()
-      masthead(p, '600', 'QUIZ', { sub: i, subs: chunks.length, right: 'R REVEALS' })
-      let r = BODY_TOP
-      chunk.forEach((q, k) => {
-        p.text(r, 1, String(i * per + k + 1).padStart(2), YELLOW)
-        r = p.wrap(r, 4, q.q, 35, WHITE)
-        p.text(r, 4, 'A:', GREEN)
-        p.concealed(r, 7, clip(q.a, 32), YELLOW)
-        r += 2
-      })
-      p.text(22, 1, 'R REVEALS THE ANSWERS', MAGENTA)
-      p.fast([['INDEX', '100'], ['GALLERY', '700'], ['PAUSE', '500'], ['HELP', '199']])
-      return p
-    })
-  },
-})
-
 // Gallery: block-graphic pictures, generated rather than stored so each is a
 // few lines of arithmetic instead of a thousand hand-placed cells.
 const GALLERY = [
@@ -1025,7 +893,7 @@ page('700', 'Gallery', {
       masthead(p, '700', 'GALLERY', { sub: i, subs: GALLERY.length, right: 'PICTURES' })
       g.draw(p)
       p.text(23, 1, `${g.title}, IN 2 BY 3 BLOCKS`, CYAN)
-      p.fast([['INDEX', '100'], ['SKY', '310'], ['QUIZ', '600'], ['BREATHE', '500']])
+      p.fast([['INDEX', '100'], ['NEWS', '101'], ['WEATHER', '302'], ['BREATHE', '500']])
       return p
     })
   },

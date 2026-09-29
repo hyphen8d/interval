@@ -160,42 +160,6 @@ export function parseOnThisDay(json) {
   }
 }
 
-/** "2 km SW of Sakai, Japan" -> "Sakai, Japan". The distance and bearing are
- *  from the nearest named place and mean nothing on a 40-column row. */
-export function shortPlace(place) {
-  const p = String(place ?? '')
-  const at = p.search(/\bof\s/)
-  return fold(at >= 0 && /^\d/.test(p) ? p.slice(at + 3) : p).trim()
-}
-
-/** USGS earthquake GeoJSON: newest first. */
-export function parseQuakes(json) {
-  if (!json || !Array.isArray(json.features)) throw new Error('no features in the response')
-  return json.features
-    .map(f => ({
-      mag: Number(f.properties?.mag),
-      place: shortPlace(f.properties?.place),
-      time: Number(f.properties?.time),
-      tsunami: !!f.properties?.tsunami,
-      alert: f.properties?.alert || null,
-    }))
-    .filter(q => Number.isFinite(q.mag) && Number.isFinite(q.time))
-    .sort((a, b) => b.time - a.time)
-}
-
-/** NOAA planetary K-index: 3-hourly readings, oldest first. */
-export function parseKp(json) {
-  if (!Array.isArray(json)) throw new Error('not an array')
-  // The products endpoint once answered as rows of strings with a header row;
-  // it now answers as objects. Accept both, since both have been live.
-  const rows = json[0] && Array.isArray(json[0])
-    ? json.slice(1).map(r => ({ time: String(r[0]).replace(' ', 'T'), kp: Number(r[1]) }))
-    : json.map(r => ({ time: r.time_tag, kp: Number(r.Kp ?? r.kp_index ?? r.kp) }))
-  const readings = rows.filter(r => r.time && Number.isFinite(r.kp))
-  if (!readings.length) throw new Error('no K-index readings')
-  return { readings, latest: readings[readings.length - 1] }
-}
-
 /** Open-Meteo, shaped for the weather magazine. */
 export function parseForecast(j) {
   if (!j || !j.current || !j.daily) throw new Error('no forecast in the response')
@@ -236,21 +200,6 @@ export function parseForecast(j) {
   }
 }
 
-/** Exchange rates against the dollar, from a short daily series so each
- *  rate carries the day before for its arrow. ECB reference rates, set once
- *  a working day. */
-export function parseRates(json) {
-  const days = Object.keys(json?.rates || {}).sort()
-  if (days.length < 1) throw new Error('no rates in the response')
-  const last = json.rates[days[days.length - 1]], prev = days.length > 1 ? json.rates[days[days.length - 2]] : null
-  return {
-    base: json.base || 'USD',
-    date: days[days.length - 1],
-    prevDate: days.length > 1 ? days[days.length - 2] : null,
-    rates: Object.keys(last).map(code => ({ code, rate: last[code], prev: prev?.[code] ?? null })),
-  }
-}
-
 /** The markets file the deploy workflow writes (tools/fetch-markets.mjs):
  *  checked for the shape page 401 reads, since it is built elsewhere. */
 export function parseMarkets(json) {
@@ -258,6 +207,41 @@ export function parseMarkets(json) {
   const series = json.series.filter(s => s && s.name && Number.isFinite(s.value))
   if (!series.length) throw new Error('every series in markets.json was empty')
   return { at: json.at || null, series }
+}
+
+/**
+ * The US cities page (302): Open-Meteo answers several places in one request
+ * when given lists of latitudes and longitudes, as an array in the same
+ * order. Needs no location permission, which is the point -- it is the
+ * weather page cycling can show everyone.
+ */
+export const CITIES = [
+  ['NEW YORK', 40.71, -74.01], ['BOSTON', 42.36, -71.06], ['WASHINGTON', 38.91, -77.04],
+  ['MIAMI', 25.76, -80.19], ['ATLANTA', 33.75, -84.39], ['CHICAGO', 41.88, -87.63],
+  ['HOUSTON', 29.76, -95.37], ['DENVER', 39.74, -104.99], ['PHOENIX', 33.45, -112.07],
+  ['LOS ANGELES', 34.05, -118.24], ['SAN FRANCISCO', 37.77, -122.42], ['SEATTLE', 47.61, -122.33],
+]
+export function citiesUrl(units) {
+  const q = new URLSearchParams({
+    latitude: CITIES.map(c => c[1]).join(','), longitude: CITIES.map(c => c[2]).join(','),
+    current: 'temperature_2m,weather_code', daily: 'temperature_2m_max,temperature_2m_min',
+    forecast_days: '1', timezone: 'auto', temperature_unit: units === 'C' ? 'celsius' : 'fahrenheit',
+  })
+  return `https://api.open-meteo.com/v1/forecast?${q}`
+}
+export function parseCities(json) {
+  const list = Array.isArray(json) ? json : [json]
+  if (list.length !== CITIES.length) throw new Error(`asked for ${CITIES.length} cities, got ${list.length}`)
+  return {
+    units: /F/.test(list[0]?.current_units?.temperature_2m || '') ? 'F' : 'C',
+    cities: list.map((c, i) => ({
+      name: CITIES[i][0],
+      temp: Math.round(c.current?.temperature_2m),
+      code: c.current?.weather_code ?? null,
+      hi: Math.round(c.daily?.temperature_2m_max?.[0]),
+      lo: Math.round(c.daily?.temperature_2m_min?.[0]),
+    })),
+  }
 }
 
 /** The World Bank's world figures, one value (the latest there is) each. */
@@ -286,13 +270,6 @@ const pad2 = (n) => String(n).padStart(2, '0')
 const mmdd = (d) => `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`
 
 export const ITN_URL = 'https://en.wikipedia.org/w/api.php?action=parse&page=Template:In_the_news&prop=text&format=json&formatversion=2&origin=*'
-export const QUAKES_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson'
-/** The currencies 400 shows, in the order it shows them. */
-export const CURRENCIES = ['EUR', 'GBP', 'JPY', 'CNY', 'CAD', 'CHF', 'AUD', 'INR']
-export const ratesUrl = (d) => {
-  const from = new Date(d.getTime() - 12 * 864e5).toISOString().slice(0, 10)
-  return `https://api.frankfurter.dev/v1/${from}..?base=USD&symbols=${CURRENCIES.join(',')}`
-}
 /** Built beside the site by the deploy workflow; relative, so it is read
  *  from whatever origin is serving the set. check-feeds passes the live
  *  address, since what it checks is that the workflow is producing it. */
@@ -301,7 +278,6 @@ export const MARKETS_LIVE_URL = 'https://hyphen8d.github.io/interval/markets.jso
 /** World Bank indicator codes, world aggregate, one request. */
 export const WB_INDICATORS = ['NY.GDP.MKTP.KD.ZG', 'FP.CPI.TOTL.ZG', 'SP.POP.TOTL', 'SP.POP.GROW', 'SL.UEM.TOTL.ZS']
 export const WB_URL = `https://api.worldbank.org/v2/country/WLD/indicator/${WB_INDICATORS.join(';')}?format=json&source=2&mrnev=1&per_page=20`
-export const KP_URL = 'https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json'
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 /** The portal is dated in UTC: that is when Wikipedia's day turns over. */
 export const currentEventsTitle = (d) => `${d.getUTCFullYear()}_${MONTHS[d.getUTCMonth()]}_${d.getUTCDate()}`
@@ -359,16 +335,6 @@ export const FEEDS = {
     url: (env) => onThisDayUrl(env.date()),
     load: async (f, env) => parseOnThisDay(await getJSON(f, onThisDayUrl(env.date()))),
   },
-  quakes: {
-    label: 'USGS', title: 'USGS: earthquakes M4.5+, past day', refreshMs: 5 * MIN,
-    url: () => QUAKES_URL,
-    load: async (f) => parseQuakes(await getJSON(f, QUAKES_URL)),
-  },
-  kp: {
-    label: 'NOAA SWPC', title: 'NOAA: planetary K-index', refreshMs: 30 * MIN,
-    url: () => KP_URL,
-    load: async (f) => parseKp(await getJSON(f, KP_URL)),
-  },
   weather: {
     label: 'OPEN-METEO', title: 'Open-Meteo: local forecast', refreshMs: 30 * MIN,
     // Keyed by the rounded position, and never persisted (see FeedCache): a
@@ -382,10 +348,10 @@ export const FEEDS = {
       return parseForecast(await getJSON(f, forecastUrl(env.location.lat, env.location.lon, env.units)))
     },
   },
-  rates: {
-    label: 'ECB', title: 'Frankfurter: ECB reference rates against the dollar', refreshMs: 60 * MIN,
-    url: (env) => ratesUrl(env.date()),
-    load: async (f, env) => parseRates(await getJSON(f, ratesUrl(env.date()))),
+  cities: {
+    label: 'OPEN-METEO', title: 'Open-Meteo: twelve US cities', refreshMs: 30 * MIN,
+    url: (env) => citiesUrl(env.units),
+    load: async (f, env) => parseCities(await getJSON(f, citiesUrl(env.units))),
   },
   markets: {
     label: 'FRED', title: 'FRED: market closes (built by the deploy workflow)', refreshMs: 60 * MIN,

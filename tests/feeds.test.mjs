@@ -4,8 +4,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  parseITN, parseOnThisDay, parseQuakes, parseKp, parseForecast, parseRates, parseMarkets,
-  parseWorldBank, shortPlace, decodeEntities, FeedCache, backoffMs, staleAfter, FEEDS, forecastUrl,
+  parseITN, parseOnThisDay, parseForecast, parseMarkets, parseCities,
+  parseWorldBank, decodeEntities, FeedCache, backoffMs, staleAfter, FEEDS, forecastUrl,
 } from '../feeds.js'
 
 const fx = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'))
@@ -33,22 +33,6 @@ test('On this day: the editorial picks in year order, text tidied', () => {
   assert.ok(!o.selected.some(e => /pictured|\n/.test(e.text)))
   assert.ok(o.births.length && o.deaths.length && o.holidays.length)
   assert.ok(!o.holidays.some(h => h.includes('\n')))
-})
-
-test('earthquakes: newest first, places shortened to the named place', () => {
-  const q = parseQuakes(fx('usgs-4.5-day.json'))
-  assert.ok(q.length > 10)
-  for (let i = 1; i < q.length; i++) assert.ok(q[i - 1].time >= q[i].time)
-  assert.equal(shortPlace('2 km SW of Sakai, Japan'), 'Sakai, Japan')
-  assert.equal(shortPlace('Mid-Atlantic Ridge'), 'Mid-Atlantic Ridge')
-})
-
-test('K-index: both shapes the endpoint has served', () => {
-  const k = parseKp(fx('swpc-kp.json'))
-  assert.ok(k.readings.length > 20)
-  assert.equal(k.latest, k.readings[k.readings.length - 1])
-  const old = parseKp([['time_tag', 'Kp'], ['2026-09-22 00:00:00.000', '2.33']])
-  assert.equal(old.latest.kp, 2.33)
 })
 
 test('forecast: today in three parts, five days, units read from the response', () => {
@@ -124,7 +108,7 @@ test('cache: persists for a warm start, except what is marked private', async ()
 
 test('the weather feed is never persisted: a forecast is a coarse location', () => {
   assert.equal(FEEDS.weather.persist, false)
-  assert.ok(staleAfter(FEEDS.quakes) < staleAfter(FEEDS.otd))
+  assert.ok(staleAfter(FEEDS.cities) < staleAfter(FEEDS.otd))
 })
 
 test('Current events: the innermost items only, sources dropped, filed by section', async () => {
@@ -137,14 +121,6 @@ test('Current events: the innermost items only, sources dropped, filed by sectio
   assert.ok(!today.some(e => e.text === 'Somali Civil War'), 'not the topic headings the news hangs under')
   assert.equal(today[0].category, 'Armed conflicts and attacks')
   assert.equal(parseCurrentEvents(all['2026_September_27']).length, 18)
-})
-
-test("rates: each against the dollar, with the working day before for its arrow", () => {
-  const r = parseRates(fx('frankfurter-usd.json'))
-  assert.equal(r.date, '2026-09-28')
-  assert.equal(r.prevDate, '2026-09-25', 'a weekend has no rates: the day before is Friday')
-  const eur = r.rates.find(x => x.code === 'EUR')
-  assert.deepEqual([eur.rate, eur.prev], [0.87889, 0.87696])
 })
 
 test('markets and the World Bank: a close each, a value and year each', () => {
@@ -163,4 +139,14 @@ test('FRED CSV: the last two real values, skipping holidays', async () => {
   const r = parseFredCsv('observation_date,DJIA\n2026-09-24,100\n2026-09-25,101.5\n2026-09-28,.\n')
   assert.deepEqual(r, { date: '2026-09-25', value: 101.5, prevDate: '2026-09-24', prev: 100 })
   assert.throws(() => parseFredCsv('observation_date,DJIA\n'))
+})
+
+test('US cities: twelve, in the order asked, units from the answer', () => {
+  const c = parseCities(fx('open-meteo-cities.json'))
+  assert.equal(c.cities.length, 12)
+  assert.equal(c.cities[0].name, 'NEW YORK')
+  assert.equal(c.cities[11].name, 'SEATTLE')
+  assert.equal(c.units, 'F')
+  assert.ok(c.cities.every(x => Number.isFinite(x.temp) && Number.isFinite(x.hi)))
+  assert.throws(() => parseCities([{}]), /asked for 12/)
 })

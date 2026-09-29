@@ -16,7 +16,7 @@
         "",
         "[w]Or key any page. Some to start with:",
         "[y] 101 [w]the news   [y] 102 [w]did you know",
-        "[y] 300 [w]weather    [y] 500 [w]breathe",
+        "[y] 302 [w]US weather [y] 500 [w]breathe",
         "",
         "[g]100 is the index. 199 is help."
       ]

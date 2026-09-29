@@ -110,7 +110,7 @@ test('the lint runs clean on the committed pages and editorial', async () => {
   const { lint } = await import('../tools/lint-pages.mjs')
   const r = await lint()
   assert.deepEqual(r.errors, [])
-  assert.ok(r.pages > 50)
+  assert.ok(r.pages > 30)
 })
 
 test('the published site is the app and nothing else', async () => {

@@ -44,10 +44,8 @@ const steps = [
     const o = await get(F.onThisDayUrl(d))
     return { selected: o.selected.slice(0, 12).map(slimEv), events: o.events.slice(0, 24).map(slimEv), births: o.births.slice(0, 16).map(slimEv), deaths: o.deaths.slice(0, 16).map(slimEv), holidays: o.holidays.slice(0, 6).map(e => ({ text: e.text, pages: (e.pages || []).slice(0, 1).map(slimPage) })) }
   }],
-  ['usgs-4.5-day.json', async () => get(F.QUAKES_URL)],
-  ['swpc-kp.json', async () => get(F.KP_URL)],
+  ['open-meteo-cities.json', async () => get(F.citiesUrl('F'))],
   ['open-meteo.json', async () => get(F.forecastUrl(40.7, -74.0, 'F'))],
-  ['frankfurter-usd.json', async () => get(F.ratesUrl(d))],
   ['markets.json', async () => (await import('./fetch-markets.mjs')).fetchMarkets()],
   ['worldbank-world.json', async () => get(F.WB_URL)],
 ]

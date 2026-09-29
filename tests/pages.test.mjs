@@ -66,15 +66,15 @@ test('a page waits while its source has not answered, and goes off air when it f
   assert.ok(text.includes('OFF AIR'))
   assert.ok(text.includes('HTTP 503'), 'and says why')
   const local = ctxWith({})
-  assert.ok(pageDef('310', local).render(local), 'the sky page needs no source at all')
+  assert.ok(pageDef('102', local).render(local), 'the facts need no source at all')
 })
 
 test('stale data is shown with its age, never hidden', () => {
   const old = ctxWith(allData(), {}, { at: NOW - 6 * 3600 * 1000 })
-  const [p] = pageDef('330', old).render(old)
+  const [p] = pageDef('302', old).render(old)
   assert.match(p.lines()[23], /NOT UPDATED SINCE 14:00/)
   const fresh = ctxWith()
-  assert.match(pageDef('330', fresh).render(fresh)[0].lines()[23], /UPDATED 19:59/)
+  assert.match(pageDef('302', fresh).render(fresh)[0].lines()[23], /UPDATED 19:59/)
 })
 
 test('the weather pages ask before they know where you are', () => {
@@ -88,14 +88,6 @@ test('the weather pages ask before they know where you are', () => {
   }
   const ctx = ctxWith()
   assert.match(pageDef('300', ctx).render(ctx)[0].lines().join('\n'), /SUNRISE 06:49/)
-})
-
-test('the quiz hides its answers until REVEAL', () => {
-  const ctx = ctxWith()
-  const [p] = pageDef('600', ctx).render(ctx)
-  const hidden = p.lines().join('\n'), shown = p.lines({ reveal: true }).join('\n')
-  assert.ok(!hidden.includes('LINE 21'))
-  assert.ok(shown.includes('LINE 21'))
 })
 
 test('the help page lists every key the set answers', () => {
@@ -149,9 +141,9 @@ test('a brief is a first sentence; the same story is not told twice; a gap takes
   assert.deepEqual(laid[1].map(p => p.block.height), [9, 6])
 })
 
-test('every page the seven sections cycle through exists, and each section is one magazine', () => {
+test('every page the sections cycle through exists, and each section is one magazine', () => {
   const ctx = ctxWith()
-  assert.equal(SECTIONS.length, 7)
+  assert.equal(SECTIONS.length, 6)
   for (const sec of SECTIONS) {
     for (const [label, num] of sec.pages) assert.ok(pageDef(num, ctx), `${sec.name}: ${label} ${num}`)
     assert.equal(new Set(sec.pages.map(([, n]) => n[0])).size, 1, `${sec.name} is one magazine`)
@@ -169,19 +161,16 @@ test('facts, born today and a thought: one bite a screen', async () => {
   const { pickBirths } = await import('../pages.js')
   const many = Array.from({ length: 200 }, (_, i) => ({ year: 2000 - i, text: `Person ${i}, someone` }))
   const picked = pickBirths(many)
-  assert.equal(picked.length, 12)
-  assert.ok(picked.at(-1).year < 1850, 'a spread of eras, not the first twelve')
+  assert.equal(picked.length, 6)
+  assert.ok(picked.at(-1).year < 1850, 'a spread of eras, not the first six')
   const born = pageDef('201', ctx).render(ctx)
   assert.ok(born.length > 1)
   const thought = pageDef('501', ctx).render(ctx)[0].lines().join(' ')
   assert.ok(editorial.thoughts.some(t => thought.includes(t.text.slice(0, 20))))
 })
 
-test('money: the dollar against the world, the markets at the close, the world in numbers', async () => {
+test('money: the markets at the close, the world in numbers', async () => {
   const ctx = ctxWith()
-  const fxPage = pageDef('400', ctx).render(ctx)[0].lines().join('\n')
-  assert.match(fxPage, /EUR\s+Euro\s+0\.8789 ▲ 0\.22%/)
-  assert.match(fxPage, /JPY\s+Yen\s+156\.9 ▼ 0\.45%/)
   const mk = pageDef('401', ctx).render(ctx)[0].lines().join('\n')
   assert.match(mk, /DOW JONES\s+51,481\.51 ▼ 0\.67%/)
   assert.match(mk, /CLOSE 28 SEP/)
@@ -212,4 +201,17 @@ test('news still shows the top stories when Current events is down', () => {
   const subs = pageDef('101', ctx).render(ctx)
   assert.ok(subs.length >= 1)
   assert.match(subs[0].lines().join(' '), /Brisbane Lions/)
+})
+
+test('US cities: twelve cities on one screen, no location needed', () => {
+  const ctx = ctxWith(allData(), { locationState: 'unknown' })
+  const text = pageDef('302', ctx).render(ctx)[0].lines().join('\n')
+  assert.match(text, /NEW YORK\s+\d+F/)
+  assert.match(text, /SEATTLE/)
+})
+
+test('on this day and born today are six screens, not eighteen', () => {
+  const ctx = ctxWith()
+  assert.equal(pageDef('200', ctx).render(ctx).length, 6)
+  assert.ok(pageDef('201', ctx).render(ctx).length <= 6)
 })

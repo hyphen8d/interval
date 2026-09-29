@@ -103,8 +103,8 @@ test('a tap on a set in standby switches it on', async () => {
 test('the phone remote is told what the coloured keys do, page by page', async () => {
   const h = await boot()
   assert.deepEqual(h.fastextLabels.at(-1), ['INDEX', 'NEWS', 'HELP', 'PAUSE'])
-  await h.go('310', 3500)
-  assert.deepEqual(h.fastextLabels.at(-1), ['WEATHER', 'SPACE', 'BREATHE', 'INDEX'])
+  await h.go('302', 3500)
+  assert.deepEqual(h.fastextLabels.at(-1), ['TODAY', '5-DAY', 'NEWS', 'INDEX'])
   h.key('n')
   assert.deepEqual(h.fastextLabels.at(-1), [null, null, null, null], 'cycling: the strip replaces the keys')
   h.shutdown()
