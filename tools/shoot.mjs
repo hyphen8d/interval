@@ -38,7 +38,7 @@ const KEYS = Object.fromEntries([
 ])
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-async function session(url, { mobile = false } = {}, fn) {
+export async function session(url, { mobile = false } = {}, fn) {
   const profile = mkdtempSync(path.join(tmpdir(), 'interval-shoot-'))
   const chrome = spawn(CHROME, [
     '--headless=new', '--remote-debugging-port=0', `--window-size=${W},${H}`, '--hide-scrollbars',
@@ -81,6 +81,12 @@ async function session(url, { mobile = false } = {}, fn) {
       async until(expr, tries = 80, gap = 250) {
         for (let i = 0; i < tries; i++) { if (await api.ev(expr)) return true; await sleep(gap) }
         throw new Error(`timed out waiting for ${expr}`)
+      },
+      /** A real mouse click at CSS pixel (x, y). */
+      async click(x, y) {
+        for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+          await send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 })
+        }
       },
       async png(file) {
         const shot = await send('Page.captureScreenshot', { format: 'png' })
@@ -162,6 +168,8 @@ const RECIPES = {
   },
 }
 
+// Importable (for a one-off check against a real browser) without shooting.
+if (process.argv[1] !== fileURLToPath(import.meta.url)) { /* imported */ } else {
 mkdirSync(SHOTS, { recursive: true })
 const want = args.filter(a => !a.startsWith('--'))
 const names = want.length ? want : Object.keys(RECIPES)
@@ -177,4 +185,5 @@ for (const n of names) {
 if (names.includes('hero')) {
   const r = spawnSync('magick', [path.join(SHOTS, 'hero.jpg'), '-resize', '1200x630', '-background', 'black', '-gravity', 'center', '-extent', '1200x630', '-quality', '88', path.join(SHOTS, 'og.jpg')])
   console.log(r.status === 0 ? 'og.jpg ok' : 'og.jpg: magick failed')
+}
 }

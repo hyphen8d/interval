@@ -39,7 +39,7 @@
     font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e8e9ec;
     border-top: 1px solid #2a2d33;
   }
-  body.remote #remote { display: grid; grid-template-columns: repeat(5, 1fr); flex: 1 1 auto; grid-auto-rows: minmax(40px, 62px); align-content: center; }
+  body.remote #remote { display: grid; grid-template-columns: repeat(5, 1fr); flex: 1 1 auto; grid-auto-rows: minmax(44px, 80px); align-content: center; }
   /* With a remote under it the tube takes its own shape at the top, rather
      than floating mid-canvas in black. Measured on a 390x844 emulation. */
   body.remote #tube { flex: 0 0 auto; aspect-ratio: 4 / 3.15; }
@@ -51,6 +51,8 @@
   #remote button:active { transform: translateY(1px); box-shadow: 0 1px 0 #0a0b0d; }
   #remote .small { font-size: 10px; letter-spacing: .05em; }
   #remote .red { background: #e0322b; color: #fff; }
+  #remote button:disabled { opacity: .45; }
+  #remote .red, #remote .green, #remote .yellow, #remote .cyan { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #remote .green { background: #2fb84c; color: #111; }
   #remote .yellow { background: #e9c521; color: #111; }
   #remote .cyan { background: #1fb3c9; color: #111; }
@@ -121,10 +123,18 @@
         var b = e.target.closest('button[data-key]');
         if (b) press(b.dataset.key);
       });
-      // A tap on the picture of a set in standby switches it on.
-      document.getElementById('tube').addEventListener('click', function () {
-        if (window.screen0 && window.screen0.program && !window.screen0.program.power) press('p');
+      // The colour buttons carry the current page's link names, so the button
+      // in your hand says what it does (program.publishFastext).
+      var colourButtons = ['F1', 'F2', 'F3', 'F4'].map(function (k) {
+        return document.querySelector('#remote button[data-key="' + k + '"]');
       });
+      window.INTERVAL_FASTEXT = function (labels) {
+        colourButtons.forEach(function (b, i) {
+          b.textContent = labels[i] || '\u00a0';
+          b.disabled = !labels[i];
+          b.setAttribute('aria-label', labels[i] ? labels[i] + ' (' + ['red', 'green', 'yellow', 'cyan'][i] + ')' : ['Red', 'Green', 'Yellow', 'Cyan'][i] + ' link, not in use');
+        });
+      };
     })();
   </script>
   <script type="module" src="./main.js"></script>

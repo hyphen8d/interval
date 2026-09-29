@@ -138,6 +138,8 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
     },
   }
   globalThis.INTERVAL_YT_QUEUE = []
+  const fastextLabels = []
+  globalThis.INTERVAL_FASTEXT = (labels) => fastextLabels.push(labels)
   globalThis.INTERVAL_BUILD = tag
   delete globalThis.INTERVAL_FORCE_RX
 
@@ -156,7 +158,7 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
   const s = { term, crt, program }
 
   const h = {
-    program, term, crt, s, announced, requests, opened, geoCalls, reloads, store, played,
+    program, term, crt, s, announced, requests, opened, geoCalls, reloads, store, played, fastextLabels,
     get now() { return now },
     /** Move the clock, driving frames and timers. */
     advance(ms) {
@@ -200,6 +202,8 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
      *  included, which the grid holds as bitmaps and row() shows as '#'. */
     page() { return program.truth ? program.truth.lines({ reveal: program.reveal }).join('\n') : '' },
     find(str) { return this.text().includes(str) },
+    /** Click grid cell (row, col) as the pointer would land on it. */
+    clickCell(row, col) { return program.followLink(program.linkAtCell(row, col)) },
     colourAt(x, y) { const c = term.colors[y * term.cols + x]; return { fg: c & 15, bg: c >> 4 } },
     deploy(build) { servedBuild = build },
     shutdown() {

@@ -47,6 +47,27 @@ try {
   // The on-screen remote (index.html) presses keys through the same path the
   // keyboard does, so there is one handler and the two cannot disagree.
   window.INTERVAL_PRESS = (key, extra = {}) => program.key(window.screen0, { key, code: extra.code || '', shiftKey: !!extra.shiftKey, preventDefault() {} })
+  // Touch, and only touch (pointer.js has the reasoning). A tap on a page
+  // number or a coloured key follows it, a tap on a set in standby switches
+  // it on; a swipe sideways turns the subpage, up and down step the page.
+  // A mouse does nothing here: on a desktop the set is driven from the keys.
+  const { gesture } = await import(`./pointer.js?v=${stamp}`)
+  const SWIPE_KEYS = { left: 'ArrowRight', right: 'ArrowLeft', up: 'ArrowUp', down: 'ArrowDown' }
+  let touchStart = null
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return
+    touchStart = { x: e.clientX, y: e.clientY, t: performance.now() }
+  })
+  canvas.addEventListener('pointerup', (e) => {
+    if (e.pointerType === 'mouse' || !touchStart) return
+    const g = gesture(e.clientX - touchStart.x, e.clientY - touchStart.y, performance.now() - touchStart.t)
+    touchStart = null
+    if (g === 'tap') {
+      const r = canvas.getBoundingClientRect()
+      program.click(e.clientX - r.left, e.clientY - r.top, r.width, r.height)
+    } else if (g && program.power) window.INTERVAL_PRESS(SWIPE_KEYS[g])
+  })
+  canvas.addEventListener('pointercancel', () => { touchStart = null })
   document.dispatchEvent(new Event('interval-ready'))
 } catch (err) {
   fault('THE TUBE DID NOT COME UP\n\n' + String(err?.stack ?? err)

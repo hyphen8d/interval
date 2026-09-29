@@ -27,6 +27,9 @@ export const BLACK = 0, RED = 1, GREEN = 2, YELLOW = 3, BLUE = 4, MAGENTA = 5, C
 export const COLOUR_NAMES = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white']
 /** The four fastext keys, in remote-control order. */
 export const FASTEXT_COLOURS = [RED, GREEN, YELLOW, CYAN]
+/** Each key is a cap this many cells wide, in a slot of ten. */
+export const FASTEXT_CAP = 9
+export const FASTEXT_SLOT = 10
 
 /**
  * The eight teletext colours as the colour tube draws them. Not the pure
@@ -238,15 +241,51 @@ export class Page {
     for (let h = 0; h < halves; h += 2) this.mosaic(r, c + h / 2, halves - h >= 2 ? 63 : 21, fg, bg)
   }
 
-  /** The fastext row: up to four [label, target] pairs, ten columns each.
-   *  A null entry leaves that key dead and its slot blank. */
+  /**
+   * The fastext row: up to four [label, target] pairs, drawn as KEYS -- a
+   * nine-cell cap in the key's colour with the label centred on it, and a
+   * one-cell gap before the next. A null entry leaves that key dead and its
+   * slot blank.
+   *
+   * 2026-09-28 -- real teletext drew these as plain coloured words, and it
+   * worked because the viewer held a remote with four coloured buttons on
+   * it; the word matched a button in their hand. On a keyboard nothing
+   * matches, and plain coloured words read as more text: the first review of
+   * the set said nobody would know the row could be used. A filled cap is the
+   * button itself, which is the thing the row stands for. Dark text on
+   * green, yellow and cyan; white on red, where black loses to it.
+   */
   fast(entries) {
     this.fastext = entries.slice(0, 4)
     this.fastext.forEach((e, i) => {
-      // Nine, not ten: a label that fills its slot runs into the next one
-      // ("Other bandIndex" on the first real render).
-      if (e) this.text(FASTEXT_ROW, i * 10, clip(e[0], 9), FASTEXT_COLOURS[i])
+      if (!e) return
+      const col = FASTEXT_COLOURS[i], x0 = i * FASTEXT_SLOT
+      const label = clip(e[0], FASTEXT_CAP)
+      this.band(FASTEXT_ROW, col, x0, x0 + FASTEXT_CAP)
+      this.text(FASTEXT_ROW, x0 + Math.floor((FASTEXT_CAP - label.length) / 2), label, col === RED ? WHITE : BLACK)
     })
+  }
+
+  /** Which fastext key, if any, column `c` of the bottom row is on. The gap
+   *  between caps belongs to no key. */
+  fastextAt(c) {
+    const i = Math.floor(c / FASTEXT_SLOT)
+    if (i < 0 || i > 3 || c - i * FASTEXT_SLOT >= FASTEXT_CAP) return null
+    return this.fastext[i] ? i : null
+  }
+
+  /** The page number printed at row r, column c, if one is: a magazine digit
+   *  and two hex digits standing alone (not part of "2026" or "4.5"). What a
+   *  click on the screen follows. A near miss by one column still counts,
+   *  since a thumb is wider than a character. */
+  pageNumberAt(r, c) {
+    const row = this.cells[r]
+    if (!row) return null
+    const text = row.map(x => (x.mos >= 0 || x.dh === 2 ? ' ' : x.ch)).join('')
+    for (const m of text.matchAll(/(?<![\w.])[1-8][0-9A-F]{2}(?![\w.])/g)) {
+      if (c >= m.index - 1 && c <= m.index + 3) return m[0]
+    }
+    return null
   }
 
   /** The page as plain text, one string per row: what the screen reader is

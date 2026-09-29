@@ -21,6 +21,7 @@ const sfx = await import(`./sfx.js?v=${V}`)
 const { announce } = await import(`./a11y.js?v=${V}`)
 const { SCREEN, PALETTE } = await import(`./config.js?v=${V}`)
 const { NORMAL, DIM } = await import(`./src/cellgrid.js`)
+const { cellAt } = await import(`./pointer.js?v=${V}`)
 const editorial = (await import(`./editorial.json?v=${V}`, { with: { type: 'json' } })).default
 
 export const STORAGE_KEY = 'interval:state:v1'
@@ -210,6 +211,7 @@ const program = {
     line(11, 'INTERVAL')
     line(13, 'STANDBY')
     line(15, this.touch() ? 'TAP POWER TO SWITCH ON' : 'PRESS P TO SWITCH ON')
+    this.publishFastext()
   },
 
   touch() { try { return globalThis.matchMedia?.('(pointer: coarse)').matches } catch (e) { return false } },
@@ -223,6 +225,7 @@ const program = {
       date: new Date(),
       editorial,
       env: {
+        touch: this.touch(),
         locationState: this.locationState,
         overnight: { on: this.overnight.on, track: this.overnight.track },
         game: this.game,
@@ -275,7 +278,8 @@ const program = {
     this.page = this.want
     this.want = null
     this.pages = pages
-    this.sub = Math.min(C.subpageAt(pages.length, Date.now()), pages.length - 1)
+    this.subMs = def.subpageMs ?? C.SUBPAGE_MS
+    this.sub = Math.min(C.subpageAt(pages.length, Date.now(), this.subMs), pages.length - 1)
     this.reveal = false
     this.size = 0
     this.setTruth(pages[this.sub], true)
@@ -289,6 +293,19 @@ const program = {
     this.truth = page
     if (fresh || !this.shown) this.shown = new T.Page()
     C.receive(this.truth, this.shown, this.rx, Math.random, fresh)
+    this.publishFastext()
+  },
+
+  /** Tell the page around the tube what the four coloured keys do now, so
+   *  the phone remote's buttons can carry the same labels as the screen. A
+   *  hook rather than DOM code here, because program.js runs in Node too. */
+  publishFastext() {
+    const labels = this.overnight.on || !this.power ? [null, null, null, null]
+      : [0, 1, 2, 3].map(i => this.truth?.fastext?.[i]?.[0] ?? null)
+    const key = labels.join('|')
+    if (key === this._fastextKey) return
+    this._fastextKey = key
+    try { globalThis.INTERVAL_FASTEXT?.(labels) } catch (e) {}
   },
 
   announcePage(def) {
@@ -303,7 +320,7 @@ const program = {
     this.nextTx = C.nextTransmission(this.page, now)
     if (!pages) return
     this.pages = pages
-    const want = this.hold ? Math.min(this.sub, pages.length - 1) : C.subpageAt(pages.length, Date.now())
+    const want = this.hold ? Math.min(this.sub, pages.length - 1) : C.subpageAt(pages.length, Date.now(), this.subMs)
     const turned = want !== this.sub
     this.sub = Math.min(want, pages.length - 1)
     this.setTruth(pages[this.sub], turned)
@@ -385,6 +402,7 @@ const program = {
     o.next = perf() + OVERNIGHT_PAGE_MS
     this.request(OVERNIGHT_PAGES[0])
     this.flash('NIGHT ON')
+    this.publishFastext()
     this.startMusic()
     announce('Overnight pages on.', 'overnight')
   },
@@ -394,6 +412,7 @@ const program = {
     if (!o.on) return
     o.on = false
     o.track = null
+    this.publishFastext()
     try { o.player?.stopVideo?.() } catch (e) {}
     announce('Overnight pages off.', 'overnight')
   },
@@ -495,6 +514,59 @@ const program = {
   /** Re-send the page on screen now, for a change the viewer just caused. */
   reRender() {
     if (this.power && this.page && !this.want) this.retransmit(perf())
+  },
+
+  // ---------------------------------------------------------------- pointer
+  /**
+   * What is under a finger: a fastext key, a page number printed on the
+   * page, or nothing. Touch only -- main.js ignores the mouse, and
+   * pointer.js says why. On a phone the finger is the remote, and the page
+   * numbers were always printed for the viewer to use.
+   */
+  linkAtCell(row, col) {
+    if (!this.power || !this.truth) return null
+    let src = row
+    if (this.size === 1) src = 1 + ((row - 1) >> 1)
+    else if (this.size === 2) src = 13 + ((row - 1) >> 1)
+    if (row < 1 || src > 24) return null
+    if (src === 24) {
+      if (this.overnight.on) return null
+      const i = this.truth.fastextAt(col)
+      return i === null ? null : { kind: 'fastext', i }
+    }
+    const num = this.truth.pageNumberAt(src, col)
+    if (num && num !== this.page && Pages.pageDef(num, this.ctx())) return { kind: 'page', num }
+    return null
+  },
+
+  /** Pointer position (CSS pixels within the canvas) to a link, or null. */
+  linkAt(x, y, W, H) {
+    const cell = cellAt(x, y, W, H, this.s.crt.params, this.s.term)
+    return cell ? this.linkAtCell(cell.row, cell.col) : null
+  },
+
+  /** A tap on the tube. Returns what it did. A set in standby switches on
+   *  wherever it is touched. */
+  click(x, y, W, H) {
+    if (!this.power) { sfx.playKeyClick(); this.powerUp(); return 'power' }
+    const link = this.linkAt(x, y, W, H)
+    return this.followLink(link)
+  },
+
+  followLink(link) {
+    if (!link) return null
+    sfx.playKeyClick()
+    this.lastKeyAt = perf()
+    this.entry = ''
+    if (link.kind === 'fastext') {
+      const target = this.truth.fastext[link.i][1]
+      if (this.overnight.on && target !== 'overnight') this.stopOvernight()
+      this.fastext(link.i)
+    } else {
+      if (this.overnight.on) this.stopOvernight()
+      this.request(link.num)
+    }
+    return link.kind
   },
 
   // ---------------------------------------------------------------- keys

@@ -11,6 +11,9 @@
 //            set keeps searching, the way a set did for a page the
 //            broadcaster was not sending.
 //   hidden   off the index and skipped by UP/DOWN. Reachable by number only.
+//   subpageMs  how long each subpage stays up before the next (default
+//            carousel.js SUBPAGE_MS, 9s). Longer on pages of running text:
+//            nine seconds is a headline, not a paragraph.
 //   render   (ctx) -> Page[] -- one Page per subpage.
 //
 // ctx: { entry(feedId), status(feedId), env, now, date, editorial }
@@ -235,7 +238,16 @@ page('100', 'Index', {
       p.text(row, col, label, i % 2 ? WHITE : YELLOW)
       p.text(row, col + 15, num, CYAN)
     })
-    p.text(22, 1, 'KEY A PAGE NUMBER.  199 FOR HELP.', MAGENTA)
+    // The ways in, said once, where a first-time viewer is looking
+    // (2026-09-28: the fastext row was not read as something to press).
+    // Keyboard on a desktop, taps on a phone -- no mouse (pointer.js).
+    if (ctx.env.touch) {
+      p.text(22, 1, 'TAP A NUMBER, OR KEY IT IN. HELP: 199', MAGENTA)
+      p.text(23, 1, 'THE COLOURED KEYS BELOW ARE LINKS', WHITE)
+    } else {
+      p.text(22, 1, 'KEY A PAGE NUMBER.  HELP: 199', MAGENTA)
+      p.text(23, 1, 'COLOURED KEYS: F1-F4, OR SHIFT+1-4', WHITE)
+    }
     p.fast([['News', '101'], ['Weather', '300'], ['SIGNAL', '500'], ['Quiz', '600']])
     return [p]
   },
@@ -243,6 +255,7 @@ page('100', 'Index', {
 
 page('101', 'News headlines', {
   feeds: ['itn'],
+  subpageMs: 12000,
   render(ctx) {
     return gate(ctx, '101', 'NEWS', ['itn'], ({ itn }) =>
       listPage('101', 'NEWS', itn.stories.map(s => textBlock(null, s, { fg: WHITE })), ctx, {
@@ -298,6 +311,7 @@ page('104', 'Most read on Wikipedia', {
 
 page('150', 'Tech: top of Hacker News', {
   feeds: ['hn'],
+  subpageMs: 12000,
   render(ctx) {
     return gate(ctx, '150', 'TECH', ['hn'], ({ hn }) => {
       const blocks = hn.stories.map((s, i) => {
@@ -330,7 +344,7 @@ function noticePage(n) {
 }
 
 page('199', 'Help: using the set', {
-  render() {
+  render(ctx) {
     const p = new Page()
     masthead(p, '199', 'HELP', { right: 'HOW TO USE' })
     let r = BODY_TOP
@@ -338,9 +352,10 @@ page('199', 'Help: using the set', {
       p.text(r, 1, k.keys, YELLOW)
       p.text(r, 12, k.label, WHITE)
       r++
+      if (k.id === 'fastext') p.text(r++, 12, `OR ${FASTEXT_ALT}`, CYAN)
     }
-    p.text(r, 12, `OR ${FASTEXT_ALT}`, CYAN)
-    p.wrap(r + 2, 1, 'Pages go round in a loop. Key a number and the header counts until yours comes past.', 38, GREEN)
+    if (ctx.env.touch) p.wrap(r + 1, 1, 'Or tap a page number or a coloured key. Swipe for pages and subpages.', 38, WHITE, 21)
+    p.text(22, 1, 'The top line counts while you wait.', GREEN)
     p.fast([['Index', '100'], ['Notices', '190'], ['Quiz', '600'], ['Overnight', '800']])
     return [p]
   },
@@ -400,6 +415,7 @@ page('1FF', 'Four keys: a hidden game', {
 
 page('200', 'On this day', {
   feeds: ['otd'],
+  subpageMs: 12000,
   render(ctx) {
     return gate(ctx, '200', 'ON THIS DAY', ['otd'], ({ otd }) => {
       const picks = otd.selected.length ? otd.selected : otd.events.slice(0, 8)
@@ -425,6 +441,7 @@ for (const [num, title, key, heading] of [
 ]) {
   page(num, title, {
     feeds: ['otd'],
+    subpageMs: 14000,
     render(ctx) {
       return gate(ctx, num, heading, ['otd'], ({ otd }) =>
         listPage(num, heading, otd[key].slice(0, 24).map(e => textBlock(String(e.year ?? ''), e.text, { width: 38 })), ctx, {
@@ -437,6 +454,7 @@ for (const [num, title, key, heading] of [
 
 page('250', 'Article of the day', {
   feeds: ['featured'],
+  subpageMs: 16000,
   render(ctx) {
     return gate(ctx, '250', 'ARTICLE', ['featured'], ({ featured }) => {
       const tfa = featured.tfa

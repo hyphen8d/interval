@@ -31,7 +31,9 @@ Press **P** (or tap, on a phone) to switch on. Then:
 | F | full screen |
 | Esc | clear a half-keyed number |
 
-On a phone the set comes with a remote control.
+On a phone the set comes with a remote control, and you can tap a page
+number or a coloured key on the screen, or swipe: sideways for subpages,
+up and down for pages.
 
 Some things worth finding: page 310 (the moon, worked out on the set),
 page 600 (a quiz, answers hidden), page 500 (SIGNAL's stations: the red key

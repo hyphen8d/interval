@@ -59,6 +59,7 @@ imported bare throughout, as in SIGNAL.
 | `editorial.json` | Hand-written content: notice pages, the quiz, the four-keys game, overnight settings. The admin dashboard edits it. |
 | `program.js` | The set: power, keys, the carousel wait, reception, overnight, drawing a page onto the tube. |
 | `sky.js` | The moon, from the date. |
+| `pointer.js` | Touch: screen position to page cell through the CRT's curve, and tap/swipe classification. Pure. |
 | `constants.js` | `KEYS` (read by page 199, the tests and `index.html`'s summary) and the colour modes. |
 | `sfx.js`, `a11y.js` | The machine's own sounds; the screen-reader live region. |
 
@@ -103,6 +104,23 @@ rebuilt.
   `https://hyphen8d.github.io/signal/stations.js` (pure data, CORS-open), so
   the listings can't drift from what SIGNAL plays. The secret stations are
   in `SECRET_STATIONS`, not `STATIONS`, and are never listed.
+- **Keyboard on a desktop, touch on a phone. No mouse** (2026-09-28). The
+  fastext row wasn't read as something to press, so the keys are drawn as
+  filled **caps** (`Page.fast`: 9 cells plus a 1-cell gap, dark text, white on
+  red), and the index says how to use them. Mouse clicking on the tube was
+  built and then removed, because driving the set from the keys is SIGNAL's
+  character and a cursor on the picture breaks it. `main.js` ignores
+  `pointerType === 'mouse'`. On touch, a tap on a printed page number
+  (`Page.pageNumberAt`: a lone `[1-8][0-9A-F]{2}`, so "2026" and "4.5" are not
+  links, and nor is a page that isn't carried) or on a coloured key follows it.
+  A tap on a set in standby switches it on. A sideways swipe turns the
+  subpage, and a vertical one steps the page (`pointer.js` `gesture`).
+  `pointer.js` `cellAt` inverts the CRT composite's geometry (fill, aspect,
+  barrel curve), and `tests/pointer.test.mjs` runs the warp forwards to check
+  the corners. The phone remote's colour buttons carry the current labels
+  through the `INTERVAL_FASTEXT` hook (`program.publishFastext`).
+- **Subpage timing is per page** (`subpageMs`): 9s by default, and 12-16s on
+  pages of running text.
 - **Notice pages come from `editorial.json`.** Any free page number works;
   the lint refuses a number a fixed page or a station page uses.
 - **The effects queue** (`fxAfter`/`fxTween`) holds everything deferred.
