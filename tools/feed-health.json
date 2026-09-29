@@ -1,19 +1,19 @@
 {
-  "checkedAt": "2026-09-29T01:42:57.906Z",
+  "checkedAt": "2026-09-29T02:14:20.026Z",
   "feeds": {
     "itn": {
       "id": "itn",
       "title": "Wikipedia: In the news",
-      "checkedAt": "2026-09-29T01:00:34.088Z",
+      "checkedAt": "2026-09-29T02:14:17.664Z",
       "items": 4,
       "detail": "4 stories, 6 deaths",
       "ok": true,
-      "ms": 375,
+      "ms": 332,
       "requests": 1,
       "status": 200,
       "cors": true,
       "strikes": 0,
-      "lastOk": "2026-09-29T01:00:34.088Z"
+      "lastOk": "2026-09-29T02:14:17.664Z"
     },
     "featured": {
       "id": "featured",
@@ -32,30 +32,30 @@
     "otd": {
       "id": "otd",
       "title": "Wikipedia: On this day",
-      "checkedAt": "2026-09-29T01:00:34.514Z",
+      "checkedAt": "2026-09-29T02:14:18.219Z",
       "items": 78,
       "detail": "18 selected, 60 events",
       "ok": true,
-      "ms": 106,
+      "ms": 123,
       "requests": 1,
       "status": 200,
       "cors": true,
       "strikes": 0,
-      "lastOk": "2026-09-29T01:00:34.514Z"
+      "lastOk": "2026-09-29T02:14:18.219Z"
     },
     "quakes": {
       "id": "quakes",
       "title": "USGS: earthquakes M4.5+, past day",
-      "checkedAt": "2026-09-29T01:00:34.620Z",
-      "items": 21,
-      "detail": "21 quakes in the past day",
+      "checkedAt": "2026-09-29T02:14:18.343Z",
+      "items": 22,
+      "detail": "22 quakes in the past day",
       "ok": true,
-      "ms": 142,
+      "ms": 91,
       "requests": 1,
       "status": 200,
       "cors": true,
       "strikes": 0,
-      "lastOk": "2026-09-29T01:00:34.620Z"
+      "lastOk": "2026-09-29T02:14:18.343Z"
     },
     "hn": {
       "id": "hn",
@@ -74,31 +74,31 @@
     "kp": {
       "id": "kp",
       "title": "NOAA: planetary K-index",
-      "checkedAt": "2026-09-29T01:00:35.258Z",
+      "checkedAt": "2026-09-29T02:14:18.434Z",
       "items": 56,
       "detail": "Kp 0.67 at 2026-09-28T21:00:00",
-      "staleHours": 4,
+      "staleHours": 5,
       "ok": true,
-      "ms": 139,
+      "ms": 77,
       "requests": 1,
       "status": 200,
       "cors": true,
       "strikes": 0,
-      "lastOk": "2026-09-29T01:00:35.258Z"
+      "lastOk": "2026-09-29T02:14:18.434Z"
     },
     "weather": {
       "id": "weather",
       "title": "Open-Meteo: local forecast",
-      "checkedAt": "2026-09-29T01:00:35.398Z",
+      "checkedAt": "2026-09-29T02:14:18.511Z",
       "items": 5,
       "detail": "5 days",
       "ok": true,
-      "ms": 927,
+      "ms": 715,
       "requests": 1,
       "status": 200,
       "cors": true,
       "strikes": 0,
-      "lastOk": "2026-09-29T01:00:35.398Z"
+      "lastOk": "2026-09-29T02:14:18.511Z"
     },
     "signal": {
       "id": "signal",
@@ -117,16 +117,72 @@
     "events": {
       "id": "events",
       "title": "Wikipedia: Current events (today, then yesterday)",
-      "checkedAt": "2026-09-29T01:42:57.906Z",
+      "checkedAt": "2026-09-29T02:14:17.996Z",
       "items": 8,
       "detail": "8 current events, today and yesterday",
       "ok": true,
-      "ms": 303,
+      "ms": 222,
       "requests": 2,
       "status": 200,
       "cors": true,
       "strikes": 0,
-      "lastOk": "2026-09-29T01:42:57.906Z"
+      "lastOk": "2026-09-29T02:14:17.996Z"
+    },
+    "dyk": {
+      "id": "dyk",
+      "title": "Wikipedia: Did you know",
+      "checkedAt": "2026-09-29T02:14:19.226Z",
+      "items": 9,
+      "detail": "9 facts",
+      "ok": true,
+      "ms": 247,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T02:14:19.226Z"
+    },
+    "rates": {
+      "id": "rates",
+      "title": "Frankfurter: ECB reference rates against the dollar",
+      "checkedAt": "2026-09-29T02:14:19.473Z",
+      "items": 8,
+      "detail": "8 rates on 2026-09-28",
+      "ok": true,
+      "ms": 458,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T02:14:19.473Z"
+    },
+    "metals": {
+      "id": "metals",
+      "title": "gold-api.com: gold, silver, platinum",
+      "checkedAt": "2026-09-29T02:14:19.932Z",
+      "items": 3,
+      "detail": "Gold $4134, Silver $61, Platinum $1711",
+      "ok": true,
+      "ms": 94,
+      "requests": 3,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T02:14:19.932Z"
+    },
+    "world": {
+      "id": "world",
+      "title": "World Bank: world growth, inflation, population",
+      "checkedAt": "2026-09-29T02:14:20.026Z",
+      "items": 5,
+      "detail": "5 world figures",
+      "ok": true,
+      "ms": 73,
+      "requests": 1,
+      "status": 200,
+      "cors": true,
+      "strikes": 0,
+      "lastOk": "2026-09-29T02:14:20.026Z"
     }
   }
 }

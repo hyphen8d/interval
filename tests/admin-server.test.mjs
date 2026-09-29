@@ -100,7 +100,7 @@ test('editorial saves are linted first, and a failing one writes nothing', async
 
 test('only the shape the set reads is ever written', () => {
   const n = admin.normaliseEditorial({ quiz: [{ q: 'q', a: 'a', extra: 1 }], evil: true, notices: [{ page: '19a', title: 't', lines: [1] }] })
-  assert.deepEqual(Object.keys(n).sort(), ['fourkeys', 'notices', 'overnight', 'quiz'])
+  assert.deepEqual(Object.keys(n).sort(), ['fourkeys', 'notices', 'quiz', 'thoughts'])
   assert.deepEqual(n.quiz, [{ q: 'q', a: 'a' }])
   assert.equal(n.notices[0].page, '19A')
   assert.deepEqual(n.notices[0].lines, ['1'])

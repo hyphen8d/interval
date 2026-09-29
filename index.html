@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>INTERVAL - teletext for the SIGNAL network</title>
-<meta name="description" content="A teletext service on a simulated CRT: live news, weather, the sky, earthquakes and SIGNAL's radio listings, keyed by page number and sent round on a loop.">
+<title>INTERVAL - teletext on a television</title>
+<meta name="description" content="A teletext service on a simulated CRT: bite-sized news, the day, the weather, the world's money and a moment's pause, keyed by page number or left to cycle.">
 <meta name="author" content="Hyphen8d">
 <meta name="theme-color" content="#000000">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="INTERVAL">
-<meta property="og:title" content="INTERVAL - teletext for the SIGNAL network">
-<meta property="og:description" content="Live pages of text on a CRT, keyed by number and sent round on a loop.">
+<meta property="og:title" content="INTERVAL - teletext on a television">
+<meta property="og:description" content="Bite-sized pages on a CRT, keyed by number or left to cycle.">
 <meta property="og:url" content="https://hyphen8d.github.io/interval/">
 <meta property="og:image" content="https://hyphen8d.github.io/interval/screenshots/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
@@ -28,7 +28,6 @@
     position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
     clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
   }
-  #ytDock { position: fixed; left: -9999px; top: -9999px; width: 200px; height: 200px; }
 
   /* The remote. A television is driven from the sofa, not from the set, so a
      touch screen gets a remote control under the tube rather than gestures on
@@ -66,17 +65,18 @@
 <body>
   <div id="about" class="sr-only">
     <h1>INTERVAL: a teletext service, rendered on a simulated television</h1>
-    <p>Pages of live text: news, most read articles, technology, on this day,
-      weather, the moon, space weather, earthquakes, and the listings for the
-      SIGNAL radio network. Each page is announced as it arrives.</p>
+    <p>Bite-sized pages of live text in seven sections: news, today, weather
+      and the earth, money, a pause, a quiz and a gallery. Each page is
+      announced as it arrives.</p>
     <p>Keys: P switches the set on or off. Type a three digit page number to
       go to a page; 100 is the index and 199 is help. Up and down arrows go to
       the next or previous page, left and right step through subpages. F1 to
       F4, or Shift and 1 to 4, follow the four coloured links. I goes to the
       index. R reveals hidden answers. H holds the page that is up. S changes
       the size. C changes between colour, black and white, and a monitor. N
-      turns the overnight pages on or off, M mutes the overnight music, F is
-      full screen, and Escape clears a half-keyed number.</p>
+      turns cycling on or off, so the set goes through the sections by itself;
+      while it does, H holds the section. F is full screen, and Escape clears
+      a half-keyed number.</p>
   </div>
   <div id="announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <canvas id="tube" role="img" aria-label="The television screen. Each page is read out as it arrives."></canvas>
@@ -99,18 +99,10 @@
     <button class="small" data-key="ArrowRight" aria-label="Next subpage">SUB &gt;</button>
     <button class="small" data-key="ArrowDown" aria-label="Previous page">P-</button>
     <button class="small" data-key="c">COLOUR</button>
-    <button class="small" data-key="n">NIGHT</button>
+    <button class="small" data-key="n">CYCLE</button>
   </div>
-  <div id="ytDock"></div>
   <pre id="fault"></pre>
   <script>
-    // The overnight music loads the YouTube IFrame API on demand; program.js
-    // queues its player-making function here so load order cannot race it.
-    window.INTERVAL_YT_QUEUE = [];
-    window.onYouTubeIframeAPIReady = function () {
-      window.INTERVAL_YT_QUEUE.forEach(function (fn) { fn(); });
-      window.INTERVAL_YT_QUEUE = [];
-    };
     (function () {
       var q = new URLSearchParams(location.search);
       if (q.get('remote') === '1' || (window.matchMedia && matchMedia('(pointer: coarse)').matches)) {

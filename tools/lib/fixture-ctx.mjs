@@ -23,12 +23,13 @@ export async function fixtureData() {
   return {
     itn: F.parseITN(fx('wiki-itn.json')),
     otd: F.parseOnThisDay(fx('wiki-onthisday.json')),
-    featured: F.parseFeatured(fx('wiki-featured.json')),
     quakes: F.parseQuakes(fx('usgs-4.5-day.json')),
-    hn: { stories: Array(10).fill(F.parseHnItem(fx('hn-item.json'))) },
     kp: F.parseKp(fx('swpc-kp.json')),
     weather: F.parseForecast(fx('open-meteo.json')),
-    signal: F.parseSignalRoster(fx('signal-stations.json')),
+    dyk: F.parseDYK(fx('wiki-dyk.json')),
+    rates: F.parseRates(fx('frankfurter-usd.json')),
+    metals: { metals: Object.values(fx('metals.json')).map(F.parseMetal) },
+    world: F.parseWorldBank(fx('worldbank-world.json')),
     events: fixtureEvents(F),
   }
 }

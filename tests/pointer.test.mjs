@@ -71,7 +71,8 @@ test('a printed page number is a link; a year or a measurement is not', () => {
 
 test('tapping a number on the index goes there; tapping a coloured key follows it', async () => {
   const h = await boot()
-  const row = h.program.truth.lines().findIndex(l => l.includes('NEWS'))
+  await h.go('100', 3500)
+  const row = h.program.truth.lines().findIndex(l => l.includes('HEADLINES'))
   const col = h.program.truth.lines()[row].indexOf('101')
   assert.equal(h.clickCell(row, col), 'page')
   await h.settle(3500)
@@ -85,7 +86,7 @@ test('tapping a number on the index goes there; tapping a coloured key follows i
 
 test('a page that does not exist is not a link, and neither is the page you are on', async () => {
   const h = await boot()
-  h.program.truth.text(21, 1, 'SEE 777 AND 100')
+  h.program.truth.text(21, 1, 'SEE 777 AND 190')
   assert.equal(h.program.linkAtCell(21, 5), null)
   assert.equal(h.program.linkAtCell(21, 13), null)
   h.shutdown()
@@ -100,18 +101,19 @@ test('a tap on a set in standby switches it on', async () => {
 
 test('the phone remote is told what the coloured keys do, page by page', async () => {
   const h = await boot()
-  assert.deepEqual(h.fastextLabels.at(-1), ['News', 'Weather', 'SIGNAL', 'Quiz'])
+  assert.deepEqual(h.fastextLabels.at(-1), ['Index', 'News', 'Help', 'Pause'])
   await h.go('310', 3500)
-  assert.deepEqual(h.fastextLabels.at(-1), ['Weather', 'Space', 'Gallery', 'Index'])
+  assert.deepEqual(h.fastextLabels.at(-1), ['Weather', 'Space', 'Breathe', 'Index'])
   h.key('n')
-  assert.deepEqual(h.fastextLabels.at(-1), [null, null, null, null], 'overnight: the strip replaces the keys')
+  assert.deepEqual(h.fastextLabels.at(-1), [null, null, null, null], 'cycling: the strip replaces the keys')
   h.shutdown()
 })
 
 test('the index tells a first-time viewer how in: keys on a desktop, taps on a phone', async () => {
   const h = await boot()
-  assert.ok(h.find('KEY A PAGE NUMBER.  HELP: 199'))
-  assert.ok(h.find('COLOURED KEYS: F1-F4, OR SHIFT+1-4'))
+  await h.go('100', 3500)
+  assert.ok(h.find('KEY A PAGE NUMBER'))
+  assert.ok(h.find('N: LET THE SET CYCLE THE PAGES'))
   assert.ok(!h.text().includes('CLICK'), 'no mouse on the desktop set')
   h.shutdown()
 })
@@ -130,7 +132,7 @@ test('a touch is a tap, a swipe, or nothing', () => {
 test('running text turns more slowly than a headline page', async () => {
   const { pageDef } = await import('../pages.js')
   const { SUBPAGE_MS } = await import('../carousel.js')
-  assert.ok(pageDef('250').subpageMs > SUBPAGE_MS)
+  assert.ok(pageDef('200').subpageMs > SUBPAGE_MS)
   const h = await boot()
   await h.go('200', 3500)
   assert.equal(h.program.subMs, 12000)

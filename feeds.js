@@ -160,22 +160,6 @@ export function parseOnThisDay(json) {
   }
 }
 
-/** Today's featured article and the most-read list. */
-export function parseFeatured(json) {
-  if (!json || (!json.tfa && !json.mostread)) throw new Error('no featured content in the response')
-  const tfa = json.tfa ? {
-    title: fold(json.tfa.titles?.normalized ?? json.tfa.title ?? '').replace(/_/g, ' '),
-    description: fold(json.tfa.description ?? ''),
-    extract: fold(json.tfa.extract ?? ''),
-  } : null
-  const mostread = (json.mostread?.articles || []).map(a => ({
-    title: fold(a.titles?.normalized ?? a.normalizedtitle ?? a.title ?? '').replace(/_/g, ' '),
-    views: a.views ?? null,
-    description: fold(a.description ?? ''),
-  })).filter(a => a.title)
-  return { tfa, mostread, date: json.mostread?.date ?? null }
-}
-
 /** "2 km SW of Sakai, Japan" -> "Sakai, Japan". The distance and bearing are
  *  from the nearest named place and mean nothing on a 40-column row. */
 export function shortPlace(place) {
@@ -197,14 +181,6 @@ export function parseQuakes(json) {
     }))
     .filter(q => Number.isFinite(q.mag) && Number.isFinite(q.time))
     .sort((a, b) => b.time - a.time)
-}
-
-/** A Hacker News item, as a row can carry it. */
-export function parseHnItem(json) {
-  if (!json || !json.title) return null
-  let domain = ''
-  try { domain = json.url ? new URL(json.url).hostname.replace(/^www\./, '') : '' } catch (e) { /* none */ }
-  return { title: fold(json.title), score: json.score ?? 0, comments: json.descendants ?? 0, by: json.by || '', domain }
 }
 
 /** NOAA planetary K-index: 3-hourly readings, oldest first. */
@@ -260,23 +236,57 @@ export function parseForecast(j) {
   }
 }
 
-/** SIGNAL's roster, from its own stations.js module. Public stations only:
- *  the listings keep the secrets the way the dial does. */
-export function parseSignalRoster(mod) {
-  const list = mod?.STATIONS
-  if (!Array.isArray(list) || !list.length) throw new Error('no STATIONS export')
+/**
+ * Wikipedia's "Did you know..." box: short, odd, true facts, each of which
+ * reads in a glance -- which is the whole brief for this set (2026-09-28:
+ * "bite-sized content in a fun interface"). Each item starts "... that" and
+ * ends with a question mark; the "(pictured)" asides go, as in the news.
+ */
+export function parseDYK(json) {
+  let html = json?.parse?.text
+  if (typeof html !== 'string') throw new Error('no parse.text in the response')
+  html = html.replace(/<style[\s\S]*?<\/style>/g, '')
+  const facts = [...html.matchAll(/<li>([\s\S]*?)<\/li>/g)]
+    .map(m => stripTags(m[1]))
+    .filter(t => /^\.\.\.\s*that\b/i.test(t))
+    .map(t => fold(t.replace(/^\.\.\.\s*that\b[\s,]*/i, '').replace(/\s*\((?:[^()]*\s)?pictured\)/gi, '').replace(/\s+([?,.])/g, '$1')).trim())
+    .filter(Boolean)
+  if (!facts.length) throw new Error('no "... that" facts in the box')
+  return { facts }
+}
+
+/** Exchange rates against the dollar, from a short daily series so each
+ *  rate carries the day before for its arrow. ECB reference rates, set once
+ *  a working day. */
+export function parseRates(json) {
+  const days = Object.keys(json?.rates || {}).sort()
+  if (days.length < 1) throw new Error('no rates in the response')
+  const last = json.rates[days[days.length - 1]], prev = days.length > 1 ? json.rates[days[days.length - 2]] : null
   return {
-    stations: list.filter(s => s && !s.secret && s.id && s.callsign).map(s => ({
-      id: s.id,
-      callsign: fold(s.callsign),
-      freq: Number(s.freq),
-      band: s.band || 'ym',
-      tagline: fold(s.tagline || ''),
-      desc: fold(s.desc || ''),
-      tracks: (s.tracks || []).map(t => ({ youtubeId: t.youtubeId || t.id, title: fold(t.title || ''), artist: fold(t.artist || '') }))
-        .filter(t => t.youtubeId),
-    })).sort((a, b) => a.freq - b.freq),
+    base: json.base || 'USD',
+    date: days[days.length - 1],
+    prevDate: days.length > 1 ? days[days.length - 2] : null,
+    rates: Object.keys(last).map(code => ({ code, rate: last[code], prev: prev?.[code] ?? null })),
   }
+}
+
+/** Gold, silver, platinum: dollars per troy ounce. */
+export function parseMetal(json) {
+  if (!json || !Number.isFinite(json.price)) throw new Error('no price in the response')
+  return { symbol: json.symbol, name: fold(json.name || json.symbol), price: json.price, at: json.updatedAt || null }
+}
+
+/** The World Bank's world figures, one value (the latest there is) each. */
+export function parseWorldBank(json) {
+  const rows = Array.isArray(json) ? json[1] : null
+  if (!Array.isArray(rows) || !rows.length) throw new Error('no World Bank rows')
+  const out = {}
+  for (const r of rows) {
+    if (r?.value == null) continue
+    out[r.indicator?.id] = { value: r.value, year: Number(r.date) }
+  }
+  if (!Object.keys(out).length) throw new Error('every World Bank value was empty')
+  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -290,20 +300,27 @@ async function getJSON(fetchImpl, url) {
 }
 const pad2 = (n) => String(n).padStart(2, '0')
 const mmdd = (d) => `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`
-const ymd = (d) => `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`
 
 export const ITN_URL = 'https://en.wikipedia.org/w/api.php?action=parse&page=Template:In_the_news&prop=text&format=json&formatversion=2&origin=*'
 export const QUAKES_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson'
-export const HN_TOP_URL = 'https://hacker-news.firebaseio.com/v0/topstories.json'
-export const hnItemUrl = (id) => `https://hacker-news.firebaseio.com/v0/item/${id}.json`
+export const DYK_URL = 'https://en.wikipedia.org/w/api.php?action=parse&page=Template:Did_you_know&prop=text&format=json&formatversion=2&origin=*'
+/** The currencies 400 shows, in the order it shows them. */
+export const CURRENCIES = ['EUR', 'GBP', 'JPY', 'CNY', 'CAD', 'CHF', 'AUD', 'INR']
+export const ratesUrl = (d) => {
+  const from = new Date(d.getTime() - 12 * 864e5).toISOString().slice(0, 10)
+  return `https://api.frankfurter.dev/v1/${from}..?base=USD&symbols=${CURRENCIES.join(',')}`
+}
+export const METALS = ['XAU', 'XAG', 'XPT']
+export const metalUrl = (sym) => `https://api.gold-api.com/price/${sym}`
+/** World Bank indicator codes, world aggregate, one request. */
+export const WB_INDICATORS = ['NY.GDP.MKTP.KD.ZG', 'FP.CPI.TOTL.ZG', 'SP.POP.TOTL', 'SP.POP.GROW', 'SL.UEM.TOTL.ZS']
+export const WB_URL = `https://api.worldbank.org/v2/country/WLD/indicator/${WB_INDICATORS.join(';')}?format=json&source=2&mrnev=1&per_page=20`
 export const KP_URL = 'https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json'
-export const SIGNAL_ROSTER_URL = 'https://hyphen8d.github.io/signal/stations.js'
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 /** The portal is dated in UTC: that is when Wikipedia's day turns over. */
 export const currentEventsTitle = (d) => `${d.getUTCFullYear()}_${MONTHS[d.getUTCMonth()]}_${d.getUTCDate()}`
 export const currentEventsUrl = (d) => `https://en.wikipedia.org/w/api.php?action=parse&page=Portal:Current_events/${currentEventsTitle(d)}&prop=text&format=json&formatversion=2&origin=*`
 export const onThisDayUrl = (d) => `https://en.wikipedia.org/api/rest_v1/feed/onthisday/all/${mmdd(d)}`
-export const featuredUrl = (d) => `https://en.wikipedia.org/api/rest_v1/feed/featured/${ymd(d)}`
 export function forecastUrl(lat, lon, units) {
   const q = new URLSearchParams({
     latitude: String(lat), longitude: String(lon),
@@ -350,12 +367,6 @@ export const FEEDS = {
       return { items: days.flatMap((d, i) => (d || []).map(x => ({ ...x, date: iso(i === 0 ? today : yesterday) }))) }
     },
   },
-  featured: {
-    label: 'WIKIPEDIA', title: 'Wikipedia: featured article and most read', refreshMs: 60 * MIN,
-    key: (env) => ymd(env.date()),
-    url: (env) => featuredUrl(env.date()),
-    load: async (f, env) => parseFeatured(await getJSON(f, featuredUrl(env.date()))),
-  },
   otd: {
     label: 'WIKIPEDIA', title: 'Wikipedia: On this day', refreshMs: 6 * 60 * MIN,
     key: (env) => mmdd(env.date()),
@@ -366,17 +377,6 @@ export const FEEDS = {
     label: 'USGS', title: 'USGS: earthquakes M4.5+, past day', refreshMs: 5 * MIN,
     url: () => QUAKES_URL,
     load: async (f) => parseQuakes(await getJSON(f, QUAKES_URL)),
-  },
-  hn: {
-    label: 'HACKER NEWS', title: 'Hacker News: top stories', refreshMs: 15 * MIN,
-    url: () => HN_TOP_URL,
-    load: async (f) => {
-      const ids = (await getJSON(f, HN_TOP_URL)).slice(0, 10)
-      const items = await Promise.all(ids.map(id => getJSON(f, hnItemUrl(id)).then(parseHnItem).catch(() => null)))
-      const stories = items.filter(Boolean)
-      if (!stories.length) throw new Error('no stories could be read')
-      return { stories }
-    },
   },
   kp: {
     label: 'NOAA SWPC', title: 'NOAA: planetary K-index', refreshMs: 30 * MIN,
@@ -396,14 +396,30 @@ export const FEEDS = {
       return parseForecast(await getJSON(f, forecastUrl(env.location.lat, env.location.lon, env.units)))
     },
   },
-  signal: {
-    label: 'SIGNAL', title: "SIGNAL's roster (stations.js)", refreshMs: 6 * 60 * MIN,
-    url: (env) => env.signalUrl || SIGNAL_ROSTER_URL,
-    // A module, not JSON: SIGNAL's roster is pure data with no imports, so it
-    // can be imported from another origin as it stands, and INTERVAL lists
-    // exactly what SIGNAL plays rather than a copy that drifts from it.
-    // GitHub Pages serves it with access-control-allow-origin: *.
-    load: async (f, env) => parseSignalRoster(await env.importModule(env.signalUrl || SIGNAL_ROSTER_URL)),
+  dyk: {
+    label: 'WIKIPEDIA', title: 'Wikipedia: Did you know', refreshMs: 60 * MIN,
+    url: () => DYK_URL,
+    load: async (f) => parseDYK(await getJSON(f, DYK_URL)),
+  },
+  rates: {
+    label: 'ECB', title: 'Frankfurter: ECB reference rates against the dollar', refreshMs: 60 * MIN,
+    url: (env) => ratesUrl(env.date()),
+    load: async (f, env) => parseRates(await getJSON(f, ratesUrl(env.date()))),
+  },
+  metals: {
+    label: 'GOLD-API.COM', title: 'gold-api.com: gold, silver, platinum', refreshMs: 15 * MIN,
+    url: () => metalUrl(METALS[0]),
+    load: async (f) => {
+      const got = await Promise.all(METALS.map(m => getJSON(f, metalUrl(m)).then(parseMetal).catch(() => null)))
+      const metals = got.filter(Boolean)
+      if (!metals.length) throw new Error('no metal could be read')
+      return { metals }
+    },
+  },
+  world: {
+    label: 'WORLD BANK', title: 'World Bank: world growth, inflation, population', refreshMs: 24 * 60 * MIN,
+    url: () => WB_URL,
+    load: async (f) => parseWorldBank(await getJSON(f, WB_URL)),
   },
 }
 

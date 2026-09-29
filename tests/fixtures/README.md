@@ -12,12 +12,13 @@ unused fields dropped) and otherwise untouched.
 | wiki-itn.json | en.wikipedia.org action API, parse of Template:In_the_news |
 | wiki-current-events.json | en.wikipedia.org action API, parse of Portal:Current_events for 2026_September_28 and _27, keyed by title |
 | wiki-onthisday.json | en.wikipedia.org REST, feed/onthisday/all/09/28 (trimmed) |
-| wiki-featured.json | en.wikipedia.org REST, feed/featured/2026/09/28 (tfa + mostread, trimmed) |
 | usgs-4.5-day.json | earthquake.usgs.gov summary/4.5_day.geojson |
-| hn-topstories.json, hn-item.json | hacker-news.firebaseio.com v0 |
 | swpc-kp.json | services.swpc.noaa.gov products/noaa-planetary-k-index.json |
 | open-meteo.json | api.open-meteo.com forecast, 5 days, New York |
-| signal-stations.json | SIGNAL's stations.js (hyphen8d/signal), public and secret stations, tracks cut to six each |
+| wiki-dyk.json | en.wikipedia.org action API, parse of Template:Did_you_know |
+| frankfurter-usd.json | api.frankfurter.dev, ECB rates against USD, 2026-09-16 to 09-28 |
+| metals.json | api.gold-api.com price/XAU, XAG, XPT, keyed by symbol |
+| worldbank-world.json | api.worldbank.org, five world indicators, most recent value each |
 
 Refresh them with `node tools/capture-fixtures.mjs` when a source changes
 shape -- and then read the diff, because a changed shape is the finding.

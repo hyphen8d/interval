@@ -44,15 +44,16 @@ export function summarise(id, data) {
     case 'itn': return { items: data.stories.length, detail: `${data.stories.length} stories, ${data.deaths.length} deaths` }
     case 'events': return { items: data.items.length, detail: `${data.items.length} current events, today and yesterday` }
     case 'otd': return { items: data.selected.length + data.events.length, detail: `${data.selected.length} selected, ${data.events.length} events` }
-    case 'featured': return { items: data.mostread.length + (data.tfa ? 1 : 0), detail: `${data.tfa ? `article "${data.tfa.title}"` : 'no article'}, ${data.mostread.length} most read` }
     case 'quakes': return { items: data.length, detail: `${data.length} quakes in the past day` }
-    case 'hn': return { items: data.stories.length, detail: `${data.stories.length} stories` }
     case 'kp': {
       const age = (Date.now() - Date.parse(data.latest.time + (data.latest.time.endsWith('Z') ? '' : 'Z'))) / 3600e3
       return { items: data.readings.length, detail: `Kp ${data.latest.kp} at ${data.latest.time}`, staleHours: Math.round(age) }
     }
     case 'weather': return { items: data.days.length, detail: `${data.days.length} days` }
-    case 'signal': return { items: data.stations.length, detail: `${data.stations.length} public stations` }
+    case 'dyk': return { items: data.facts.length, detail: `${data.facts.length} facts` }
+    case 'rates': return { items: data.rates.length, detail: `${data.rates.length} rates on ${data.date}` }
+    case 'metals': return { items: data.metals.length, detail: data.metals.map(m => `${m.name} $${Math.round(m.price)}`).join(', ') }
+    case 'world': return { items: Object.keys(data).length, detail: `${Object.keys(data).length} world figures` }
     default: return { items: null, detail: '' }
   }
 }
@@ -71,15 +72,7 @@ export async function probe(id, feed, { fetchImpl = globalThis.fetch, now = new 
     } finally { clearTimeout(timer) }
   }
   const env = {
-    date: () => now, location: PROBE_LOCATION, units: 'C', signalUrl: null,
-    // SIGNAL's roster is a module. Node cannot import over https, so it is
-    // fetched (through the same CORS-recording fetch) and imported as data.
-    importModule: async (url) => {
-      const res = await probeFetch(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const text = await res.text()
-      return import(`data:text/javascript;base64,${Buffer.from(text).toString('base64')}`)
-    },
+    date: () => now, location: PROBE_LOCATION, units: 'C',
   }
   const t0 = Date.now()
   const out = { id, title: feed.title, checkedAt: new Date().toISOString() }

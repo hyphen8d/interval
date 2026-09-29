@@ -1,5 +1,5 @@
 // INTERVAL -- the set. Power, the keypad, the carousel wait, reception, the
-// overnight rotation, and drawing a page onto the tube.
+// cycling through the sections, and drawing a page onto the tube.
 //
 // The engine calls init(s) once, frame(s, t) every animation frame and
 // key(s, e) on every keydown (src/screen.js). Everything deferred goes on
@@ -30,10 +30,12 @@ export const STORAGE_KEY = 'interval:state:v1'
 export const FEED_WAIT_MS = 15000
 /** How often, while on, the set asks every source whether it is due. */
 export const FEED_POLL_MS = 30000
-/** How long each page stays up in the overnight rotation. */
-export const OVERNIGHT_PAGE_MS = 14000
-/** Pages the overnight rotation shows, in order. */
-export const OVERNIGHT_PAGES = ['100', '101', '104', '200', '250', '300', '310', '320', '400', '500', '700', '888']
+/** How long cycling (N) leaves a page up: long enough to show its
+ *  subpages, within these bounds. A page of eight facts shows three. */
+export const CYCLE_MIN_MS = 12000
+export const CYCLE_MAX_MS = 36000
+/** The breathing page, once round the box and once more. */
+export const CYCLE_LIVE_MS = 32000
 /** How often an open tab asks whether a new build has been deployed. */
 export const BUILD_CHECK_MS = 30 * 60 * 1000
 
@@ -77,16 +79,20 @@ const program = {
     this.rx = 1
     this.interference = null
     this.nextInterference = perf() + this.interferenceGap()
-    this.overnight = { on: false, idx: 0, next: 0, muted: false, track: null, player: null, queue: [] }
+    this.cycle = { on: false, section: 0, index: 0, next: Infinity, holdSection: false }
+    this.subEpoch = 0
+    this.nextLive = Infinity
     this.pendingReload = false
 
     const saved = loadState()
     const q = queryParams()
     this.colourMode = Math.max(0, COLOUR_MODES.findIndex(m => m.key === saved.colourMode))
-    this.overnight.muted = !!saved.muted
     this.game = { i: 0, score: 0, answered: null, best: saved.gameBest || 0 }
     this.weatherConsent = saved.weatherConsent || null
-    this.startPage = [q.get('page'), saved.page, '100'].map(x => String(x || '').toUpperCase()).find(C.validPage)
+    // 190, the welcome, is where the set lands when it is switched on
+    // (2026-09-28): it says what INTERVAL is and how to let it cycle. A link
+    // with ?page= still opens where it points.
+    this.startPage = [q.get('page'), '190'].map(x => String(x || '').toUpperCase()).find(C.validPage)
     const rx = parseFloat(q.get('rx'))
     this.forcedRx = Number.isFinite(rx) ? clamp01(rx) : null
 
@@ -103,10 +109,6 @@ const program = {
         date: () => new Date(),
         get location() { return program.location },
         get units() { return program.units },
-        signalUrl: q.get('signal') || null,
-        // Overridable so the test harness can hand over a fixture instead
-        // of fetching SIGNAL's live roster.
-        importModule: (url) => (globalThis.INTERVAL_IMPORT_MODULE ?? ((u) => import(u)))(url),
       },
       onChange: (id) => this.onFeedChange(id),
     })
@@ -170,7 +172,7 @@ const program = {
     this.fxTween(p, 'brightness', 0.05, this.crtBase.brightness, 1100)
     this.fxTween(p, 'bloomAmt', this.crtBase.bloomAmt * 2.4, this.crtBase.bloomAmt, 1400)
     this.s.term.clear()
-    this.request(this.startPage || '100')
+    this.request(this.startPage || '190')
     this.nextFeedPoll = 0
     if (this.weatherConsent === 'yes' && this.locationState === 'unknown') this.requestLocation()
     announce('INTERVAL switched on.', 'power')
@@ -181,9 +183,8 @@ const program = {
     this.power = false
     sfx.playPowerOff()
     sfx.stopHum()
-    this.stopOvernight()
+    this.stopCycle()
     this.fxClear()
-    this.startPage = this.page || this.want || this.startPage
     this.want = null
     this.entry = ''
     this.hold = false
@@ -227,7 +228,6 @@ const program = {
       env: {
         touch: this.touch(),
         locationState: this.locationState,
-        overnight: { on: this.overnight.on, track: this.overnight.track },
         game: this.game,
       },
     }
@@ -279,7 +279,13 @@ const program = {
     this.want = null
     this.pages = pages
     this.subMs = def.subpageMs ?? C.SUBPAGE_MS
-    this.sub = Math.min(C.subpageAt(pages.length, Date.now(), this.subMs), pages.length - 1)
+    // Subpages count from the page's arrival, so a page always opens on its
+    // first screen (2026-09-28). The broadcaster's own clock, which the first
+    // version followed, opened a twelve-fact page at fact seven.
+    this.subEpoch = Date.now()
+    this.sub = 0
+    this.nextLive = def.liveMs ? now + def.liveMs : Infinity
+    if (this.cycle.on) this.cycle.next = now + this.cycleDwell(def, pages.length)
     this.reveal = false
     this.size = 0
     this.setTruth(pages[this.sub], true)
@@ -300,7 +306,7 @@ const program = {
    *  the phone remote's buttons can carry the same labels as the screen. A
    *  hook rather than DOM code here, because program.js runs in Node too. */
   publishFastext() {
-    const labels = this.overnight.on || !this.power ? [null, null, null, null]
+    const labels = this.cycle.on || !this.power ? [null, null, null, null]
       : [0, 1, 2, 3].map(i => this.truth?.fastext?.[i]?.[0] ?? null)
     const key = labels.join('|')
     if (key === this._fastextKey) return
@@ -320,11 +326,25 @@ const program = {
     this.nextTx = C.nextTransmission(this.page, now)
     if (!pages) return
     this.pages = pages
-    const want = this.hold ? Math.min(this.sub, pages.length - 1) : C.subpageAt(pages.length, Date.now(), this.subMs)
+    const want = this.hold ? Math.min(this.sub, pages.length - 1) : C.subpageAt(pages.length, Date.now() - this.subEpoch, this.subMs)
     const turned = want !== this.sub
     this.sub = Math.min(want, pages.length - 1)
     this.setTruth(pages[this.sub], turned)
     if (turned) this.announcePage(def)
+  },
+
+  /** A page that moves (liveMs: the breathing circle, the population
+   *  count) is re-drawn in place between transmissions, without the
+   *  reception pass -- it is the set animating, not the signal arriving. */
+  liveRender(now) {
+    const def = Pages.pageDef(this.page, this.ctx())
+    if (!def?.liveMs) { this.nextLive = Infinity; return }
+    this.nextLive = now + def.liveMs
+    const { pages } = this.render(this.page)
+    if (!pages) return
+    this.pages = pages
+    this.truth = pages[Math.min(this.sub, pages.length - 1)]
+    this.shown = this.truth.clone()
   },
 
   stepSub(dir) {
@@ -386,100 +406,71 @@ const program = {
     p.roll = b.roll + bad * 0.25
   },
 
-  // ---------------------------------------------------------------- overnight
-  overnightDue(now) {
-    const o = editorial.overnight || {}
-    const h = new Date().getHours()
-    const from = o.startHour ?? 0, to = o.endHour ?? 6
-    const inWindow = from <= to ? h >= from && h < to : h >= from || h < to
-    return inWindow && now - this.lastKeyAt > (o.idleMinutes ?? 10) * 60 * 1000
+  // ---------------------------------------------------------------- cycling
+  // N lets the set turn its own pages: every page of a section, then the next
+  // section, round all seven (pages.js SECTIONS). H while cycling holds the
+  // section -- round its pages again and again -- until H once more. Keying a
+  // page takes the set back. Manual on purpose: the set does nothing on its
+  // own until asked (2026-09-28).
+
+  cycleDwell(def, subs) {
+    if (def?.liveMs && def.num === '500') return CYCLE_LIVE_MS
+    return Math.min(CYCLE_MAX_MS, Math.max(CYCLE_MIN_MS, subs * (def?.subpageMs ?? C.SUBPAGE_MS)))
   },
 
-  startOvernight() {
-    const o = this.overnight
-    o.on = true
-    o.idx = 0
-    o.next = perf() + OVERNIGHT_PAGE_MS
-    this.request(OVERNIGHT_PAGES[0])
-    this.flash('NIGHT ON')
+  /** The pages of a section cycling can show: the weather pages only once
+   *  the set knows where it is, since without that they are a question. */
+  cyclePages(section) {
+    return Pages.SECTIONS[section].pages.map(([, n]) => n)
+      .filter(n => !((n === '300' || n === '301') && this.locationState !== 'granted'))
+  },
+
+  startCycle() {
+    const c = this.cycle
+    const here = Pages.sectionOf(this.page)
+    c.on = true
+    c.holdSection = false
+    c.section = here >= 0 ? here : 0
+    const pages = this.cyclePages(c.section)
+    const at = pages.indexOf(this.page)
+    if (at >= 0) {
+      // Already on a page of this section: give it its time, then move on.
+      c.index = at
+      c.next = perf() + CYCLE_MIN_MS
+    } else {
+      c.index = 0
+      c.next = Infinity
+      this.request(pages[0])
+    }
+    this.flash('CYCLING')
     this.publishFastext()
-    this.startMusic()
-    announce('Overnight pages on.', 'overnight')
+    announce(`Cycling through the sections, starting with ${Pages.SECTIONS[c.section].name.toLowerCase()}.`, 'cycle')
   },
 
-  stopOvernight() {
-    const o = this.overnight
-    if (!o.on) return
-    o.on = false
-    o.track = null
+  stopCycle() {
+    const c = this.cycle
+    if (!c.on) return
+    c.on = false
+    c.next = Infinity
     this.publishFastext()
-    try { o.player?.stopVideo?.() } catch (e) {}
-    announce('Overnight pages off.', 'overnight')
+    announce('Cycling stopped.', 'cycle')
   },
 
-  overnightTick(now) {
-    const o = this.overnight
-    if (!o.on) { if (this.overnightDue(now)) this.startOvernight(); return }
-    if (now < o.next || this.want) return
-    // The roster may not have been in when the rotation started.
-    if (!o.station) this.startMusic()
-    const pages = OVERNIGHT_PAGES.filter(n => !((n === '300') && this.locationState !== 'granted'))
-    o.idx = (o.idx + 1) % pages.length
-    o.next = now + OVERNIGHT_PAGE_MS
-    this.request(pages[o.idx])
-  },
-
-  /** The overnight music: SIGNAL's own tracks for the chosen station, through
-   *  the YouTube IFrame API, loaded only when first needed. */
-  startMusic() {
-    const o = this.overnight
-    const roster = this.feeds.get('signal')?.data
-    const st = roster?.stations?.find(x => x.id === editorial.overnight?.stationId) || roster?.stations?.[0]
-    if (!st || !st.tracks.length) { this.ensureFeed('signal'); return }
-    o.station = st
-    o.queue = st.tracks.slice().sort(() => Math.random() - 0.5)
-    const play = () => {
-      const next = o.queue.shift() || st.tracks[Math.floor(Math.random() * st.tracks.length)]
-      o.track = next
-      try {
-        o.player.loadVideoById(next.youtubeId)
-        if (o.muted) o.player.mute(); else o.player.unMute()
-      } catch (e) {}
+  cycleTick(now) {
+    const c = this.cycle
+    if (!c.on || this.want || now < c.next) return
+    let pages = this.cyclePages(c.section)
+    c.index++
+    if (c.index >= pages.length) {
+      c.index = 0
+      if (!c.holdSection) {
+        c.section = (c.section + 1) % Pages.SECTIONS.length
+        pages = this.cyclePages(c.section)
+        announce(Pages.SECTIONS[c.section].name, 'cycle')
+      }
     }
-    o.playNext = play
-    if (o.player) { play(); return }
-    const doc = globalThis.document
-    const make = () => {
-      try {
-        o.player = new globalThis.YT.Player('ytDock', {
-          width: 200, height: 200,
-          playerVars: { autoplay: 1, controls: 0, playsinline: 1 },
-          events: {
-            onReady: () => { if (o.on) play() },
-            onStateChange: (e) => { if (e.data === 0 && o.on) play() },
-            onError: () => { if (o.on) play() },
-          },
-        })
-      } catch (e) {}
-    }
-    if (globalThis.YT?.Player) { make(); return }
-    if (!doc?.createElement) return
-    globalThis.INTERVAL_YT_QUEUE?.push(make)
-    if (!doc.getElementById('yt-api')) {
-      const tag = doc.createElement('script')
-      tag.id = 'yt-api'
-      tag.src = 'https://www.youtube.com/iframe_api'
-      tag.async = true
-      doc.head.appendChild(tag)
-    }
-  },
-
-  toggleMute() {
-    const o = this.overnight
-    o.muted = !o.muted
-    try { o.muted ? o.player?.mute() : o.player?.unMute() } catch (e) {}
-    this.flash(o.muted ? 'MUTED' : 'SOUND ON')
-    this.saveState()
+    c.next = Infinity
+    this.request(pages[c.index])
   },
 
   // ---------------------------------------------------------------- location
@@ -530,7 +521,7 @@ const program = {
     else if (this.size === 2) src = 13 + ((row - 1) >> 1)
     if (row < 1 || src > 24) return null
     if (src === 24) {
-      if (this.overnight.on) return null
+      if (this.cycle.on) return null
       const i = this.truth.fastextAt(col)
       return i === null ? null : { kind: 'fastext', i }
     }
@@ -560,10 +551,10 @@ const program = {
     this.entry = ''
     if (link.kind === 'fastext') {
       const target = this.truth.fastext[link.i][1]
-      if (this.overnight.on && target !== 'overnight') this.stopOvernight()
+      if (this.cycle.on) this.stopCycle()
       this.fastext(link.i)
     } else {
-      if (this.overnight.on) this.stopOvernight()
+      if (this.cycle.on) this.stopCycle()
       this.request(link.num)
     }
     return link.kind
@@ -579,22 +570,10 @@ const program = {
   },
 
   follow(target) {
-    if (target === 'overnight') { this.overnight.on ? (this.stopOvernight(), this.flash('NIGHT OFF'), this.reRender()) : this.startOvernight(); return }
     if (target === 'locate') { this.requestLocation(); return }
     if (target === 'sub:next') { this.stepSub(1); return }
-    if (target.startsWith('signal:')) { this.tuneSignal(target.slice(7)); return }
     if (target.startsWith('game:')) { this.gameMove(target.slice(5)); return }
     this.request(target)
-  },
-
-  signalAppUrl(stationId) {
-    const base = new URL('./', FEEDS.signal.url(this.feeds.env)).href
-    return `${base}?station=${encodeURIComponent(stationId)}`
-  },
-
-  tuneSignal(id) {
-    this.flash('TUNING')
-    try { globalThis.open?.(this.signalAppUrl(id), '_blank', 'noopener') } catch (e) {}
   },
 
   gameMove(move) {
@@ -647,9 +626,13 @@ const program = {
   },
 
   handleKey(k, lower, e) {
-    const pageKey = () => { if (this.overnight.on) this.stopOvernight() }
+    const pageKey = () => { if (this.cycle.on) this.stopCycle() }
     const fast = { F1: 0, F2: 1, F3: 2, F4: 3 }[k] ?? (e.shiftKey && /^Digit[1-4]$/.test(e.code || '') ? +e.code.slice(5) - 1 : null)
-    if (fast !== null) { pageKey(); this.fastext(fast); return true }
+    // While cycling, the coloured keys are hidden under the cycling strip,
+    // so a coloured key stops the cycle and shows them rather than following
+    // a link the viewer cannot see.
+    if (fast !== null && this.cycle.on) { this.stopCycle(); this.flash('STOPPED'); return true }
+    if (fast !== null) { this.fastext(fast); return true }
     if (/^[0-9]$/.test(k)) { pageKey(); this.typeDigit(k); return true }
     if (this.entry && /^[a-f]$/.test(lower)) { this.typeDigit(lower.toUpperCase()); return true }
     switch (k) {
@@ -673,6 +656,14 @@ const program = {
         if (this.reveal && this.truth) announce(this.truth.speech({ reveal: true }), 'reveal')
         return true
       case 'h':
+        // Cycling: hold the SECTION, going round its pages. Otherwise hold
+        // the page that is up, as a teletext set's HOLD did.
+        if (this.cycle.on) {
+          this.cycle.holdSection = !this.cycle.holdSection
+          this.flash(this.cycle.holdSection ? 'SECTION' : 'MOVE ON')
+          announce(this.cycle.holdSection ? `Holding ${Pages.SECTIONS[this.cycle.section].name.toLowerCase()}.` : 'Moving on.', 'cycle')
+          return true
+        }
         this.hold = !this.hold
         this.flash(this.hold ? 'HOLD' : 'RELEASE')
         return true
@@ -687,10 +678,9 @@ const program = {
         this.saveState()
         return true
       case 'n':
-        if (this.overnight.on) { this.stopOvernight(); this.flash('NIGHT OFF') }
-        else this.startOvernight()
+        if (this.cycle.on) { this.stopCycle(); this.flash('STOPPED') }
+        else this.startCycle()
         return true
-      case 'm': this.toggleMute(); return true
       case 'f': this.toggleFullscreen(); return true
       case 'p': this.powerDown(); return true
     }
@@ -716,7 +706,6 @@ const program = {
       globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify({
         page: this.page || this.startPage,
         colourMode: COLOUR_MODES[this.colourMode].key,
-        muted: this.overnight.muted,
         weatherConsent: this.weatherConsent || undefined,
         gameBest: this.game.best || undefined,
       }))
@@ -744,7 +733,8 @@ const program = {
     }
     if (this.want && now >= this.arriveAt) this.tryArrive(now)
     if (this.page && !this.want && now >= this.nextTx) this.retransmit(now)
-    this.overnightTick(now)
+    if (this.page && !this.want && now >= this.nextLive) this.liveRender(now)
+    this.cycleTick(now)
   },
 
   frame(s, t) {
@@ -791,7 +781,7 @@ const program = {
       if (this.size === 1) { src = 1 + ((y - 1) >> 1); half = (y - 1) & 1 ? 'bottom' : 'top' }
       else if (this.size === 2) { src = 13 + ((y - 1) >> 1); half = (y - 1) & 1 ? 'bottom' : 'top' }
       if (src > 24) { for (let x = 0; x < T.COLS; x++) term.put(x, y, ' ', NORMAL, 0, 7); continue }
-      if (src === 24 && this.overnight.on) { this.drawNightStrip(y, half); continue }
+      if (src === 24 && this.cycle.on) { this.drawCycleStrip(y, half); continue }
       const tr = this.truth.cells[src], sr = this.shown.cells[src]
       for (let x = 0; x < T.COLS; x++) this.putCell(y, x, tr[x], sr[x], half, flashOn)
     }
@@ -814,15 +804,17 @@ const program = {
     else term.put(x, y, ' ', NORMAL, 0, col)
   },
 
-  drawNightStrip(y, half) {
+  /** Row 24 while cycling: where the set is and the two keys that matter.
+   *  The coloured keys are hidden while it runs (see handleKey). */
+  drawCycleStrip(y, half) {
     const P = new T.Page()
-    const st = this.overnight.station
+    const c = this.cycle
+    const sec = Pages.SECTIONS[c.section]
     P.band(24, T.BLUE)
-    P.text(24, 1, this.overnight.muted ? 'MUTED' : 'MUSIC', T.YELLOW, T.BLUE)
-    if (st) {
-      P.text(24, 8, `SIGNAL ${st.freq.toFixed(1)}`, T.WHITE, T.BLUE)
-      P.text(24, 23, T.clip(st.callsign, 16), T.CYAN, T.BLUE)
-    } else P.text(24, 8, 'OVERNIGHT PAGES', T.WHITE, T.BLUE)
+    P.text(24, 1, c.holdSection ? 'HOLDING' : 'CYCLING', T.YELLOW, T.BLUE)
+    P.text(24, 9, T.clip(sec.name, 8), T.WHITE, T.BLUE)
+    P.text(24, 18, c.holdSection ? 'H MOVES ON' : 'H HOLDS', T.CYAN, T.BLUE)
+    P.text(24, 31, 'N STOPS', T.CYAN, T.BLUE)
     for (let x = 0; x < T.COLS; x++) this.putCell(y, x, P.cells[24][x], P.cells[24][x], half)
   },
 }

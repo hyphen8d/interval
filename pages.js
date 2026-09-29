@@ -16,7 +16,19 @@
 //            nine seconds is a headline, not a paragraph.
 //   render   (ctx) -> Page[] -- one Page per subpage.
 //
+//   liveMs   re-draw the page this often while it is up, for a page that
+//            moves (the breathing page, the world population count).
+//
 // ctx: { entry(feedId), status(feedId), env, now, date, editorial }
+//
+// 2026-09-28, third pass -- the brief. INTERVAL is a set you put on and let
+// cycle: bite-sized pages in a fun interface, every one of them readable at
+// a glance, and if you want more you go and find it elsewhere. That is the
+// test for a page now, ahead of "would a real teletext set have this?": a
+// page that needs reading, rather than glancing at, does not belong. It is
+// why the story pages, the most-read list (a title and a view count tell you
+// nothing), Hacker News (points and comments are noise), the article of the
+// day and the SIGNAL listings all went.
 //
 // Layout contract every page keeps (tests/pages.test.mjs holds it): rows 1-2
 // are the masthead, the body is rows 4-21, row 22 is spare, row 23 is the
@@ -45,14 +57,30 @@ export const BODY_BOTTOM = 21
  */
 export const MAGAZINES = {
   1: { name: 'NEWS', band: RED, ink: WHITE, accent: YELLOW },
-  2: { name: 'KNOWLEDGE', band: MAGENTA, ink: WHITE, accent: YELLOW },
+  2: { name: 'TODAY', band: MAGENTA, ink: WHITE, accent: YELLOW },
   3: { name: 'WEATHER', band: BLUE, ink: CYAN, accent: YELLOW },
-  4: { name: 'EARTH', band: RED, ink: YELLOW, accent: WHITE },
-  5: { name: 'SIGNAL', band: YELLOW, ink: BLUE, accent: RED },
-  6: { name: 'GAMES', band: MAGENTA, ink: YELLOW, accent: WHITE },
-  7: { name: 'GALLERY', band: CYAN, ink: BLUE, accent: BLUE },
+  4: { name: 'MONEY', band: YELLOW, ink: BLUE, accent: RED },
+  5: { name: 'PAUSE', band: CYAN, ink: BLUE, accent: BLUE },
+  6: { name: 'QUIZ', band: GREEN, ink: BLACK, accent: BLACK },
+  7: { name: 'GALLERY', band: WHITE, ink: BLUE, accent: RED },
   8: { name: 'SERVICE', band: BLUE, ink: WHITE, accent: YELLOW },
 }
+
+/**
+ * The seven sections, in the order cycling goes through them (N), and the
+ * pages in each. H while cycling holds the section: the set keeps going
+ * round its pages until H again. The index lists the same thing.
+ */
+export const SECTIONS = [
+  { name: 'NEWS', pages: [['HEADLINES', '101'], ['FACTS', '102']] },
+  { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201']] },
+  { name: 'WEATHER', pages: [['TODAY', '300'], ['5-DAY', '301'], ['SKY', '310'], ['SPACE', '320'], ['QUAKES', '330']] },
+  { name: 'MONEY', pages: [['CURRENCIES', '400'], ['METALS', '401'], ['THE WORLD', '410']] },
+  { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501']] },
+  { name: 'QUIZ', pages: [['QUIZ', '600']] },
+  { name: 'GALLERY', pages: [['PICTURES', '700']] },
+]
+export const sectionOf = (num) => SECTIONS.findIndex(s => s.pages.some(([, n]) => n === String(num).toUpperCase()))
 export const magazineOf = (num) => MAGAZINES[String(num)[0]] || MAGAZINES[8]
 
 // ---------------------------------------------------------------------------
@@ -174,7 +202,6 @@ const gate = (ctx, num, title, ids, fn) => {
   return fn(g.data)
 }
 
-const thousands = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n ?? ''))
 
 // ---------------------------------------------------------------------------
 // WMO weather codes, as words a row can carry.
@@ -214,15 +241,11 @@ function weatherIcon(code) {
 // Pages
 // ---------------------------------------------------------------------------
 
-const INDEX_ENTRIES = [
-  ['NEWS', '101'], ['MOST READ', '104'], ['TECH', '150'], ['NOTICES', '190'], ['HELP', '199'],
-  ['ON THIS DAY', '200'], ['BIRTHS', '202'], ['ARTICLE', '250'], ['WEATHER', '300'],
-  ['5-DAY FORECAST', '301'], ['SKY TONIGHT', '310'], ['SPACE WEATHER', '320'], ['EARTHQUAKES', '400'],
-  ['SIGNAL', '500'], ['QUIZ', '600'], ['GALLERY', '700'], ['OVERNIGHT', '800'], ['SUBTITLES', '888'],
-]
-
 const defs = []
 const page = (num, title, def) => { defs.push({ num, title, feeds: [], ...def }); return num }
+const LONG_DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+const MONTH_NAMES = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER']
+const longDate = (ms) => { const d = new Date(ms); return `${LONG_DAYS[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}` }
 
 page('100', 'Index', {
   render(ctx) {
@@ -231,27 +254,38 @@ page('100', 'Index', {
     p.double(1, 1, 'INTERVAL', YELLOW, BLUE)
     p.text(1, 24, 'THE PAGES', WHITE)
     p.text(2, 24, 'BETWEEN PICTURES', CYAN)
-    const half = Math.ceil(INDEX_ENTRIES.length / 2)
-    INDEX_ENTRIES.forEach(([label, num], i) => {
-      const col = i < half ? 1 : 21
-      const row = 4 + (i % half) * 2
-      p.text(row, col, label, i % 2 ? WHITE : YELLOW)
-      p.text(row, col + 15, num, CYAN)
-    })
-    // The ways in, said once, where a first-time viewer is looking
-    // (2026-09-28: the fastext row was not read as something to press).
-    // Keyboard on a desktop, taps on a phone -- no mouse (pointer.js).
-    if (ctx.env.touch) {
-      p.text(22, 1, 'TAP A NUMBER, OR KEY IT IN. HELP: 199', MAGENTA)
-      p.text(23, 1, 'THE COLOURED KEYS BELOW ARE LINKS', WHITE)
-    } else {
-      p.text(22, 1, 'KEY A PAGE NUMBER.  HELP: 199', MAGENTA)
-      p.text(23, 1, 'COLOURED KEYS: F1-F4, OR SHIFT+1-4', WHITE)
+    // Section by section, the section name in its own masthead colour, its
+    // pages beside it -- the index is the map cycling follows.
+    let r = BODY_TOP
+    for (const sec of SECTIONS) {
+      const m = MAGAZINES[sec.pages[0][1][0]]
+      p.text(r, 1, sec.name, m.band === BLUE ? CYAN : m.band === WHITE ? WHITE : m.band)
+      // Two to a row: a ten-column label and its number, twice.
+      sec.pages.forEach(([label, num], i) => {
+        const row = r + Math.floor(i / 2), col = i % 2 ? 25 : 10
+        p.text(row, col, clip(label, 10), WHITE)
+        p.text(row, col + 11, num, CYAN)
+      })
+      r += Math.ceil(sec.pages.length / 2)
     }
-    p.fast([['News', '101'], ['Weather', '300'], ['SIGNAL', '500'], ['Quiz', '600']])
+    p.text(r + 1, 10, 'WELCOME', WHITE); p.text(r + 1, 21, '190', CYAN)
+    p.text(r + 1, 25, 'HELP', WHITE); p.text(r + 1, 36, '199', CYAN)
+    // The ways in, said once, where a first-time viewer is looking.
+    // Keyboard on a desktop, taps on a phone -- no mouse (pointer.js).
+    p.text(22, 1, ctx.env.touch ? 'TAP A NUMBER, OR KEY IT IN' : 'KEY A PAGE NUMBER', MAGENTA)
+    p.text(23, 1, ctx.env.touch ? 'CYCLE: THE CYCLE BUTTON' : 'N: LET THE SET CYCLE THE PAGES', WHITE)
+    p.fast([['News', '101'], ['Weather', '300'], ['Money', '400'], ['Pause', '500']])
     return [p]
   },
 })
+
+// ---------------------------------------------------------------------------
+// News: short bits you take in at a glance (2026-09-28, third pass). The
+// second pass made 101 a Ceefax-style headline index with a page per story,
+// and it was too much: this set is left on to cycle, and a story that needs
+// its own page to be read is a story for somewhere else. So: two screens of
+// briefs, back to the first pass's shape.
+// ---------------------------------------------------------------------------
 
 /** Capitalised words, for spotting the same story told twice. */
 const namesIn = (t) => new Set((t.match(/\b[A-Z][a-z]{3,}\b/g) || []).filter(w => !['The', 'This', 'That', 'After', 'During', 'Former'].includes(w)))
@@ -262,263 +296,100 @@ export function sameStory(a, b) {
   return shared >= 2
 }
 
-// ---------------------------------------------------------------------------
-// News (2026-09-28, second pass). Ceefax's shape: 101 is a page of headlines,
-// each with a page number, and every story has a page of its own. The first
-// pass packed briefs onto two screens and had to cut every story to its first
-// sentence to do it; this one gives each story the room to be told whole,
-// and makes the page numbers the way around, which is what teletext is.
-// ---------------------------------------------------------------------------
-
-/** Story pages: 111 to 129, one per story, in the order 101 lists them.
- *  Decimal only: a hex number (11A) is one no remote can key, and the
- *  hidden pages are the only place those belong. */
-export const STORY_FIRST = 111
-export const STORY_MAX = 19
-
-/** The portal's sections, as the one word a headline is filed under when the
- *  item has no topic of its own; and the order the headlines take within a
- *  day -- politics and science first, so the page does not open on three
- *  airstrikes in a row just because Wikipedia files conflicts first. */
-const SECTIONS = [
-  ['Politics and elections', 'POLITICS'], ['International relations', 'WORLD'],
-  ['Science and technology', 'SCIENCE'], ['Business and economy', 'BUSINESS'],
-  ['Health and environment', 'HEALTH'], ['Arts and culture', 'ARTS'],
-  ['Law and crime', 'CRIME'], ['Sports', 'SPORT'],
-  ['Disasters and accidents', 'DISASTER'], ['Armed conflicts and attacks', 'CONFLICT'],
-]
-const sectionWord = (cat) => SECTIONS.find(([c]) => c === cat)?.[1] ?? 'NEWS'
-/** "BUSINESS" -> "Business": a fallback label in the case the others are in. */
-const titleCase = (w) => w[0] + w.slice(1).toLowerCase()
-const sectionRank = (cat) => { const i = SECTIONS.findIndex(([c]) => c === cat); return i < 0 ? SECTIONS.length : i }
-
-/** A headline label from the article or topic Wikipedia files the item
- *  under: "the AFL Grand Final" -> "AFL Grand Final", "2026 Berlin Marathon"
- *  -> "Berlin Marathon". Measured against real items before it was built on
- *  (2026-09-28): most carry one; the rest fall back to their section. */
-export function newsLabel(raw, category, text = '') {
-  let t = String(raw ?? '').trim()
-  t = t.replace(/^(the|a|an)\s+/i, '').replace(/^\d{4}\s+/, '').replace(/\s+\([^)]*\)$/, '')
-  if (t) return clip(t[0].toUpperCase() + t.slice(1), 33)
-  // No topic: the section, and the first name in the story -- a place or a
-  // person -- so two fallbacks in one list are not both just "Disaster"
-  // (which is how the first cut of this read).
-  const name = namePhrase(text)
-  const sec = titleCase(sectionWord(category))
-  return clip(name ? `${sec}: ${name}` : sec, 33)
+/** The first sentence of a news item: what a bite-sized brief is. */
+export function brief(text, max = 170) {
+  const first = String(text).match(/^.+?[.!?](?=\s+[A-Z0-9"']|$)/)?.[0] ?? String(text)
+  return first.length <= max ? first : `${clip(first, max - 3)}...`
 }
 
-/** The first run of capitalised words after a story's opening word:
- *  "Eighty-one people in Uttar Pradesh, India" -> "Uttar Pradesh". */
-export function namePhrase(text) {
-  const words = String(text).split(/\s+/).slice(1)
-  let run = []
-  for (const w of words) {
-    const bare = w.replace(/[,.;:'"()]+$/g, '').replace(/'s$/, '')
-    if (/^[A-Z][\w-]*$/.test(bare)) { run.push(bare); if (/[,.;:]$/.test(w)) break }
-    else if (run.length) {
-      // A lone adjective of place ("Himalayan", "Russian") describes the
-      // name that follows it; keep looking for the name.
-      if (run.length === 1 && /(an|ese|ish|ic)$/.test(run[0])) { run = []; continue }
-      break
-    }
-  }
-  return run.join(' ')
-}
-
-const isoLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
-const LONG_DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
-const MONTH_NAMES = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER']
-/** How a log's date reads next to the viewer's own day. */
-function dayLabel(iso, now) {
-  const today = new Date(now)
-  if (!iso || iso === isoLocal(today)) return 'TODAY'
-  const y = new Date(now); y.setDate(y.getDate() - 1)
-  if (iso === isoLocal(y)) return 'YESTERDAY'
-  const d = new Date(`${iso}T12:00`)
-  return `${LONG_DAYS[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`
-}
+/** Portal sections, in the order briefs take within a day: politics and
+ *  science before conflicts, so the page does not open on three airstrikes
+ *  because Wikipedia files those first. */
+const PORTAL_ORDER = ['Politics and elections', 'International relations', 'Science and technology',
+  'Business and economy', 'Health and environment', 'Arts and culture', 'Law and crime', 'Sports',
+  'Disasters and accidents', 'Armed conflicts and attacks']
+const portalRank = (c) => { const i = PORTAL_ORDER.indexOf(c); return i < 0 ? PORTAL_ORDER.length : i }
 
 /**
- * The stories, in the order 101 lists them, each with its page number:
- * "In the news" first (Wikipedia's own pick, current by definition), then
- * the Current events log, newest day first and politics-before-airstrikes
- * within a day, anything retelling a story already listed left out.
+ * Fill exactly `pages` subpages from `blocks`, in order, letting a later
+ * block fill the gap an earlier one could not -- so each page ends full.
  */
-export function newsStories(ctx) {
-  const itn = ctx.entry('itn')?.data
-  if (!itn) return []
-  const now = ctx.now
-  const out = itn.stories.map((text, i) => ({ label: newsLabel(itn.labels?.[i], null), text, section: 'IN THE NEWS', when: 'TODAY', top: true }))
-  const events = (ctx.entry('events')?.data?.items || []).map((e, i) => ({ ...e, i }))
-    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || sectionRank(a.category) - sectionRank(b.category) || a.i - b.i)
-  for (const e of events) {
-    if (out.some(s => sameStory(s.text, e.text))) continue
-    out.push({ label: newsLabel(e.topic, e.category, e.text), text: e.text, section: sectionWord(e.category), when: dayLabel(e.date, now), top: false })
+export function fillPages(blocks, pages, { top = BODY_TOP, bottom = BODY_BOTTOM, gap = 1 } = {}) {
+  const out = []
+  const left = blocks.slice()
+  for (let pg = 0; pg < pages && left.length; pg++) {
+    const placed = []
+    let row = top
+    for (let k = 0; k < left.length;) {
+      const b = left[k]
+      if (row + b.height - 1 <= bottom) { placed.push({ block: b, row }); row += b.height + gap; left.splice(k, 1) }
+      else k++
+    }
+    if (placed.length) out.push(placed)
   }
-  return out.slice(0, STORY_MAX).map((s, i) => ({ ...s, num: String(STORY_FIRST + i) }))
-}
-
-/** One headline on 101: the label and its page number, then the story's
- *  opening words -- a label alone ("Kyiv strikes") says too little. */
-function headlineBlock(story) {
-  return {
-    height: 2,
-    draw(p, r) {
-      p.text(r, 1, clip(story.label, 33), YELLOW)
-      p.text(r, 36, story.num, CYAN)
-      p.text(r + 1, 1, clip(story.text, 38), WHITE)
-    },
-  }
+  return out
 }
 
 page('101', 'News headlines', {
   feeds: ['itn', 'events'],
   subpageMs: 12000,
   render(ctx) {
-    return gate(ctx, '101', 'NEWS', ['itn'], () => {
-      const stories = newsStories(ctx)
-      // Blocks in order; a day heading goes in wherever the day changes, so
-      // yesterday's news says so instead of passing as today's.
-      const blocks = []
-      let day = null
-      const now = new Date(ctx.now)
-      const todayLine = `${LONG_DAYS[now.getDay()]} ${now.getDate()} ${MONTH_NAMES[now.getMonth()]}`
-      for (const s of stories) {
-        if (s.when !== day) {
-          const head = s.when === 'TODAY' ? todayLine : s.when
-          blocks.push({ height: 1, heading: true, draw: (p, r) => p.text(r, 1, head, s.when === 'TODAY' ? GREEN : MAGENTA) })
-          day = s.when
-        }
-        blocks.push(headlineBlock(s))
+    return gate(ctx, '101', 'NEWS', ['itn'], ({ itn }) => {
+      const events = (ctx.entry('events')?.data?.items || []).map((e, i) => ({ ...e, i }))
+        .sort((a, b) => (b.date || '').localeCompare(a.date || '') || portalRank(a.category) - portalRank(b.category) || a.i - b.i)
+      const briefs = []
+      for (const e of events) {
+        const t = brief(e.text)
+        if ([...itn.stories, ...briefs].some(s => sameStory(s, t))) continue
+        briefs.push(t)
       }
-      const laid = paginate(blocks, { gap: 0 })
-      // A day heading that ends up at the foot of a page, with its stories
-      // on the next one, belongs on that next page.
-      for (let i = 0; i < laid.length - 1; i++) {
-        const last = laid[i][laid[i].length - 1]
-        if (last?.block.heading) { laid[i].pop(); laid[i + 1] = paginate([last.block, ...laid[i + 1].map(x => x.block)], { gap: 0 })[0] }
-      }
-      return laid.slice(0, 2).map((placed, i) => {
+      // Briefs cut off with "..." go last: a sentence that ends reads as
+      // news, one that trails off as a fault.
+      const whole = briefs.filter(t => !t.endsWith('...')), cut = briefs.filter(t => t.endsWith('...'))
+      const blocks = [...itn.stories.map(brief), ...whole, ...cut].map(t => textBlock(null, t))
+      const laid = fillPages(blocks, 2)
+      return laid.map((placed, i) => {
         const p = new Page()
-        masthead(p, '101', 'NEWS', { sub: i, subs: Math.min(2, laid.length), right: 'HEADLINES' })
+        masthead(p, '101', 'NEWS', { sub: i, subs: laid.length, right: i ? 'HEADLINES' : longDate(ctx.now).split(' ')[0] })
         for (const { block, row } of placed) block.draw(p, row)
-        p.text(22, 1, 'KEY A STORY NUMBER TO READ IT', MAGENTA)
         creditLine(p, ctx, 'itn')
-        p.fast([['First', stories[0]?.num ?? '101'], ['Ongoing', '102'], ['Most read', '104'], ['Index', '100']])
+        p.fast([['Did you', '102'], ['This day', '200'], ['Weather', '300'], ['Index', '100']])
         return p
       })
     })
   },
 })
 
-/** A story's own page. Registered on demand by pageDef(), like SIGNAL's
- *  stations: the numbers exist once the news has arrived. */
-function storyPage(story, stories, ctx) {
-  const p = new Page()
-  masthead(p, story.num, 'NEWS', { right: story.section })
-  const head = wrapText(story.label, 38)
-  let r = BODY_TOP
-  head.slice(0, 2).forEach(l => { p.double(r, 1, l, YELLOW); r += 2 })
-  const now = new Date(ctx.now)
-  const when = story.when === 'TODAY' ? `${LONG_DAYS[now.getDay()]} ${now.getDate()} ${MONTH_NAMES[now.getMonth()]}` : story.when
-  p.text(r, 1, story.top ? when : `${story.section}  ${when}`, story.when === 'TODAY' ? CYAN : MAGENTA)
-  r = p.wrap(r + 2, 1, story.text, 38, WHITE, 21)
-  // The foot of the page points onward, as Ceefax's story pages did: the
-  // next few headlines, with their numbers, in whatever room the story left.
-  const i = stories.findIndex(s => s.num === story.num)
-  const next = stories[(i + 1) % stories.length]
-  const more = [1, 2, 3, 4, 5, 6].map(k => stories[(i + k) % stories.length]).filter(s => s !== story)
-  let row = r + 1
-  if (row <= 19 && more.length) {
-    p.text(row++, 1, 'MORE HEADLINES', GREEN)
-    for (const s of more) {
-      if (row > 21) break
-      p.text(row, 1, clip(s.label, 33), YELLOW)
-      p.text(row, 36, s.num, CYAN)
-      row++
-    }
-  }
-  creditLine(p, ctx, story.top ? 'itn' : 'events')
-  p.fast([['Headlines', '101'], ['Next', next.num], ['Most read', '104'], ['Index', '100']])
-  return p
-}
-
-page('102', 'Ongoing and recent deaths', {
-  feeds: ['itn'],
-  render(ctx) {
-    return gate(ctx, '102', 'ONGOING', ['itn'], ({ itn }) => {
-      const blocks = []
-      if (itn.ongoing.length) {
-        blocks.push({ height: 1, draw: (p, r) => p.text(r, 1, 'ONGOING', CYAN) })
-        itn.ongoing.forEach(o => blocks.push(textBlock('*', o, { leadFg: CYAN })))
-      }
-      if (itn.deaths.length) {
-        blocks.push({ height: 1, draw: (p, r) => p.text(r, 1, 'RECENT DEATHS', CYAN) })
-        const names = itn.deaths.join(', ')
-        blocks.push(textBlock(null, names))
-      }
-      return listPage('102', 'ONGOING', blocks, ctx, {
-        feed: 'itn', right: 'NEWS', gap: 0,
-        fast: [['Headlines', '101'], ['Most read', '104'], ['This day', '200'], ['Index', '100']],
-      })
-    })
-  },
-})
-
-page('104', 'Most read on Wikipedia', {
-  feeds: ['featured'],
-  render(ctx) {
-    return gate(ctx, '104', 'MOST READ', ['featured'], ({ featured }) => {
-      const blocks = featured.mostread.slice(0, 15).map((a, i) => ({
-        height: a.description ? 2 : 1,
-        draw(p, r) {
-          p.text(r, 1, String(i + 1).padStart(2), YELLOW)
-          p.text(r, 4, clip(a.title, 28), WHITE)
-          const v = thousands(a.views)
-          p.text(r, 39 - v.length, v, GREEN)
-          if (a.description) p.text(r + 1, 4, clip(a.description, 35), CYAN)
-        },
-      }))
-      return listPage('104', 'MOST READ', blocks, ctx, {
-        feed: 'featured', right: 'YESTERDAY', gap: 0,
-        fast: [['News', '101'], ['Article', '250'], ['Tech', '150'], ['Index', '100']],
-      })
-    })
-  },
-})
-
-page('150', 'Tech: top of Hacker News', {
-  feeds: ['hn'],
+page('102', 'Did you know', {
+  feeds: ['dyk'],
   subpageMs: 12000,
   render(ctx) {
-    return gate(ctx, '150', 'TECH', ['hn'], ({ hn }) => {
-      const blocks = hn.stories.map((s, i) => {
-        const lines = wrapText(s.title, 34)
-        return {
-          height: lines.length + 1,
-          draw(p, r) {
-            p.text(r, 1, String(i + 1).padStart(2), YELLOW)
-            lines.forEach((l, k) => p.text(r + k, 4, l, WHITE))
-            p.text(r + lines.length, 4, clip(`${s.score} PTS  ${s.comments} COMMENTS  ${s.domain}`, 35), GREEN)
-          },
-        }
-      })
-      return listPage('150', 'TECH', blocks, ctx, {
-        feed: 'hn', right: 'HACKER NEWS',
-        fast: [['News', '101'], ['Most read', '104'], ['Notices', '190'], ['Index', '100']],
-      })
-    })
+    return gate(ctx, '102', 'DID YOU KNOW', ['dyk'], ({ dyk }) => dyk.facts.map((fact, i) => {
+      const p = new Page()
+      masthead(p, '102', 'DID YOU KNOW', { sub: i, subs: dyk.facts.length, right: 'NEWS' })
+      p.double(BODY_TOP + 1, 1, '...that', YELLOW)
+      p.wrap(BODY_TOP + 4, 1, fact, 38, WHITE, BODY_BOTTOM)
+      creditLine(p, ctx, 'dyk')
+      p.fast([['Headlines', '101'], ['This day', '200'], ['Born', '201'], ['Index', '100']])
+      return p
+    }))
+  },
+})
+
+page('190', 'Welcome', {
+  render(ctx) {
+    const n = (ctx.editorial.notices || []).find(x => String(x.page) === '190') || { page: '190', title: 'WELCOME', lines: [] }
+    return [noticePage({ ...n, page: '190' })]
   },
 })
 
 /** A notice page: written in the admin dashboard, stored in editorial.json,
- *  drawn from its markup (markup.js). Any number no fixed page uses. */
+ *  drawn from its markup (markup.js). */
 function noticePage(n) {
   const p = new Page()
   masthead(p, n.page, n.title || 'NOTICES', { right: 'INTERVAL' })
   drawLines(p, n.lines || [], BODY_TOP, 1)
-  p.fast([['Index', '100'], ['Help', '199'], ['SIGNAL', '500'], ['Overnight', '800']])
+  p.fast([['Index', '100'], ['News', '101'], ['Help', '199'], ['Pause', '500']])
   return p
 }
 
@@ -535,7 +406,7 @@ page('199', 'Help: using the set', {
     }
     if (ctx.env.touch) p.wrap(r + 1, 1, 'Or tap a page number or a coloured key. Swipe for pages and subpages.', 38, WHITE, 21)
     p.text(22, 1, 'The top line counts while you wait.', GREEN)
-    p.fast([['Index', '100'], ['Notices', '190'], ['Quiz', '600'], ['Overnight', '800']])
+    p.fast([['Index', '100'], ['Welcome', '190'], ['News', '101'], ['Quiz', '600']])
     return [p]
   },
 })
@@ -606,55 +477,42 @@ page('200', 'On this day', {
         p.double(BODY_TOP, 1, String(e.year ?? ''), YELLOW)
         p.wrap(BODY_TOP + 3, 1, e.text, 38, WHITE, BODY_BOTTOM)
         creditLine(p, ctx, 'otd')
-        p.fast([['Events', '201'], ['Births', '202'], ['Deaths', '203'], ['Index', '100']])
+        p.fast([['Born', '201'], ['News', '101'], ['Weather', '300'], ['Index', '100']])
         return p
       })
     })
   },
 })
 
-for (const [num, title, key, heading] of [
-  ['201', 'On this day: more events', 'events', 'EVENTS'],
-  ['202', 'On this day: births', 'births', 'BIRTHS'],
-  ['203', 'On this day: deaths', 'deaths', 'DEATHS'],
-]) {
-  page(num, title, {
-    feeds: ['otd'],
-    subpageMs: 14000,
-    render(ctx) {
-      return gate(ctx, num, heading, ['otd'], ({ otd }) =>
-        listPage(num, heading, otd[key].slice(0, 24).map(e => textBlock(String(e.year ?? ''), e.text, { width: 38 })), ctx, {
-          feed: 'otd', right: 'ON THIS DAY',
-          fast: [['This day', '200'], ['Events', '201'], ['Births', '202'], ['Deaths', '203']],
-        }))
-    },
-  })
+/**
+ * Born today: one person a screen. Wikipedia's list runs newest first and
+ * is hundreds long, most of it recent athletes, so a dozen are taken evenly
+ * across it -- a spread of eras rather than the first twelve footballers.
+ * The entry is "Name, what they were (d. year)"; the name goes big.
+ */
+export function pickBirths(births, n = 12) {
+  if (births.length <= n) return births.slice()
+  const step = births.length / n
+  return Array.from({ length: n }, (_, i) => births[Math.floor(i * step + step / 2)])
 }
-
-page('250', 'Article of the day', {
-  feeds: ['featured'],
-  subpageMs: 16000,
+page('201', 'Born today', {
+  feeds: ['otd'],
+  subpageMs: 10000,
   render(ctx) {
-    return gate(ctx, '250', 'ARTICLE', ['featured'], ({ featured }) => {
-      const tfa = featured.tfa
-      if (!tfa) return listPage('250', 'ARTICLE', [], ctx, { feed: 'featured', fast: [['Index', '100']], empty: 'No featured article today.' })
-      const head = wrapText(tfa.title, 19)
-      const lines = wrapText(tfa.extract, 38)
-      const first = BODY_BOTTOM - (BODY_TOP + head.length * 2 + (tfa.description ? 2 : 1)) + 1
-      const chunks = [lines.slice(0, first)]
-      for (let i = first; i < lines.length; i += BODY_BOTTOM - BODY_TOP + 1) chunks.push(lines.slice(i, i + BODY_BOTTOM - BODY_TOP + 1))
-      return chunks.map((chunk, i) => {
+    return gate(ctx, '201', 'BORN TODAY', ['otd'], ({ otd }) => {
+      const picks = pickBirths(otd.births).sort((a, b) => (a.year ?? 0) - (b.year ?? 0))
+      return picks.map((e, i) => {
         const p = new Page()
-        masthead(p, '250', 'ARTICLE OF THE DAY', { sub: i, subs: chunks.length, right: 'WIKIPEDIA' })
-        let r = BODY_TOP
-        if (i === 0) {
-          head.slice(0, 2).forEach(h => { p.double(r, 1, h, YELLOW); r += 2 })
-          if (tfa.description) { p.text(r, 1, clip(tfa.description, 38), CYAN); r++ }
-          r++
-        }
-        chunk.forEach(l => { if (r <= BODY_BOTTOM) p.text(r++, 1, l, WHITE) })
-        creditLine(p, ctx, 'featured')
-        p.fast([['Most read', '104'], ['This day', '200'], ['News', '101'], ['Index', '100']])
+        masthead(p, '201', 'BORN TODAY', { sub: i, subs: picks.length, right: 'TODAY' })
+        const at = e.text.indexOf(', ')
+        const name = at > 0 ? e.text.slice(0, at) : e.text
+        const what = at > 0 ? e.text.slice(at + 2) : ''
+        p.double(BODY_TOP, 1, String(e.year ?? ''), CYAN)
+        let r = BODY_TOP + 3
+        for (const l of wrapText(name, 38).slice(0, 2)) { p.double(r, 1, l, YELLOW); r += 2 }
+        if (what) p.wrap(r + 1, 1, what[0].toUpperCase() + what.slice(1), 38, WHITE, BODY_BOTTOM)
+        creditLine(p, ctx, 'otd')
+        p.fast([['This day', '200'], ['News', '101'], ['Weather', '300'], ['Index', '100']])
         return p
       })
     })
@@ -680,7 +538,7 @@ function weatherGate(num, title, ctx, fn) {
     ]
     let r = BODY_TOP + 3
     for (const para of copy) r = p.wrap(r, 1, para, 38, WHITE) + 1
-    p.fast([loc === 'insecure' || loc === 'unsupported' || loc === 'asking' ? null : ['Locate me', 'locate'], ['Sky', '310'], ['Space', '320'], ['Index', '100']])
+    p.fast([loc === 'insecure' || loc === 'unsupported' || loc === 'asking' ? null : ['Locate me', 'locate'], ['Sky', '310'], ['Quakes', '330'], ['Index', '100']])
     return [p]
   }
   return gate(ctx, num, title, ['weather'], ({ weather }) => fn(weather))
@@ -779,7 +637,7 @@ page('310', 'Sky tonight', {
       r = p.wrap(r, 1, 'Sunrise and sunset need your location: see page 300.', 38, WHITE) + 1
     }
     p.wrap(r, 1, 'Worked out on the set from the date. This page needs no signal at all.', 38, GREEN)
-    p.fast([['Weather', '300'], ['Space', '320'], ['Gallery', '700'], ['Index', '100']])
+    p.fast([['Weather', '300'], ['Space', '320'], ['Breathe', '500'], ['Index', '100']])
     return [p]
   },
 })
@@ -814,23 +672,23 @@ page('320', 'Space weather', {
         ? 'A storm this strong can push the aurora well south of the usual latitudes. Worth a look outside after dark.'
         : 'Aurora is unlikely away from high latitudes at this level.', 38, WHITE)
       creditLine(p, ctx, 'kp')
-      p.fast([['Weather', '300'], ['Sky', '310'], ['Quakes', '400'], ['Index', '100']])
+      p.fast([['Weather', '300'], ['Sky', '310'], ['Quakes', '330'], ['Index', '100']])
       return [p]
     })
   },
 })
 
-page('400', 'Earthquakes', {
+page('330', 'Earthquakes', {
   feeds: ['quakes'],
   render(ctx) {
-    return gate(ctx, '400', 'EARTHQUAKES', ['quakes'], ({ quakes }) => {
+    return gate(ctx, '330', 'EARTHQUAKES', ['quakes'], ({ quakes }) => {
       const rows = quakes.slice(0, 32)
       const per = 14
       const chunks = []
       for (let i = 0; i < Math.max(1, rows.length); i += per) chunks.push(rows.slice(i, i + per))
       return chunks.map((chunk, i) => {
         const p = new Page()
-        masthead(p, '400', 'EARTHQUAKES', { sub: i, subs: chunks.length, right: 'PAST DAY' })
+        masthead(p, '330', 'EARTHQUAKES', { sub: i, subs: chunks.length, right: 'PAST DAY' })
         p.text(BODY_TOP, 1, 'MAGNITUDE 4.5 AND OVER', CYAN)
         p.text(BODY_TOP + 1, 1, 'TIME  MAG WHERE', YELLOW)
         if (!rows.length) p.text(BODY_TOP + 3, 1, 'None in the past day.', WHITE)
@@ -846,69 +704,196 @@ page('400', 'Earthquakes', {
         })
         p.text(22, 1, 'TIMES LOCAL.  T: TSUNAMI MESSAGE ISSUED', MAGENTA)
         creditLine(p, ctx, 'quakes')
-        p.fast([['Space', '320'], ['Weather', '300'], ['News', '101'], ['Index', '100']])
+        p.fast([['Space', '320'], ['Weather', '300'], ['Money', '400'], ['Index', '100']])
         return p
       })
     })
   },
 })
 
-/** SIGNAL station page numbers: 511-519 for YM, 521-529 for ZM, in
- *  frequency order. SIGNAL's own lint holds each band to nine public
- *  stations, which is exactly why nine numbers per band is enough. */
-export function stationPages(roster) {
-  const out = []
-  for (const [band, base] of [['ym', 0x511], ['zm', 0x521]]) {
-    roster.stations.filter(s => s.band === band).slice(0, 9)
-      .forEach((s, i) => out.push({ num: (base + i).toString(16).toUpperCase(), station: s }))
-  }
-  return out
-}
-const bandLabel = (b) => (b === 'zm' ? 'ZM' : 'YM')
-const freqText = (f) => (Number.isFinite(f) ? f.toFixed(1) : '--')
 
-page('500', 'SIGNAL listings', {
-  feeds: ['signal'],
+// ---------------------------------------------------------------------------
+// Money: the world's numbers at a glance. No crypto (2026-09-28, by choice),
+// and no stock indices: nothing that serves them is open to a browser
+// without a key, and this site has no server to hide one behind.
+// ---------------------------------------------------------------------------
+
+const CURRENCY_NAMES = { EUR: 'Euro', GBP: 'Pound', JPY: 'Yen', CNY: 'Yuan', CAD: 'Canadian dollar', CHF: 'Swiss franc', AUD: 'Australian dollar', INR: 'Rupee' }
+/** A rate to four significant figures: 0.8789, 15.69, 156.9. */
+const sig = (x) => (x >= 100 ? x.toFixed(1) : x >= 10 ? x.toFixed(2) : x.toFixed(4))
+/** ▲ or ▼ and the day's change in percent, or blank when unchanged. */
+function move(now, prev) {
+  if (!Number.isFinite(prev) || prev === 0) return null
+  const pct = (now - prev) / prev * 100
+  if (Math.abs(pct) < 0.005) return { mark: '=', pct: '0.00%', up: null }
+  return { mark: pct > 0 ? '▲' : '▼', pct: `${Math.abs(pct).toFixed(2)}%`, up: pct > 0 }
+}
+
+page('400', 'Currencies', {
+  feeds: ['rates'],
   render(ctx) {
-    return gate(ctx, '500', 'SIGNAL', ['signal'], ({ signal }) => {
-      const pages = stationPages(signal)
-      return ['ym', 'zm'].map((band, i) => {
-        const p = new Page()
-        masthead(p, '500', 'SIGNAL', { sub: i, subs: 2, right: 'LISTINGS' })
-        p.text(BODY_TOP - 1, 1, band === 'ym' ? 'YM BAND   100.0-900.0 KHZ' : 'ZM BAND   1000.0-1800.0 KHZ', CYAN)
-        let r = BODY_TOP + 1
-        for (const { num, station } of pages.filter(x => x.station.band === band)) {
-          p.text(r, 1, num, CYAN)
-          p.text(r, 5, freqText(station.freq).padStart(6), YELLOW)
-          p.text(r, 13, clip(station.callsign, 26), WHITE)
-          p.text(r + 1, 13, clip(station.tagline, 26), GREEN)
-          r += 2
-        }
-        creditLine(p, ctx, 'signal')
-        p.fast([['First', pages.find(x => x.station.band === band)?.num ?? '500'], ['Overnight', '800'], ['Band', 'sub:next'], ['Index', '100']])
-        return p
-      })
+    return gate(ctx, '400', 'CURRENCIES', ['rates'], ({ rates }) => {
+      const p = new Page()
+      masthead(p, '400', 'CURRENCIES', { right: 'MONEY' })
+      p.text(BODY_TOP, 1, 'ONE US DOLLAR BUYS', CYAN)
+      const order = ['EUR', 'GBP', 'JPY', 'CNY', 'CAD', 'CHF', 'AUD', 'INR']
+      const byCode = Object.fromEntries(rates.rates.map(r => [r.code, r]))
+      let r = BODY_TOP + 2
+      for (const code of order) {
+        const x = byCode[code]
+        if (!x) continue
+        p.text(r, 1, code, YELLOW)
+        p.text(r, 6, CURRENCY_NAMES[code] || code, WHITE)
+        p.text(r, 24, sig(x.rate).padStart(8), WHITE)
+        const m = move(x.rate, x.prev)
+        if (m) { p.text(r, 33, m.mark, m.up === null ? WHITE : m.up ? GREEN : RED); p.text(r, 34, m.pct.padStart(6), m.up === null ? WHITE : m.up ? GREEN : RED) }
+        r += 2
+      }
+      p.text(22, 1, `${rates.date}  ▲ THE DOLLAR BUYS MORE`, CYAN)
+      creditLine(p, ctx, 'rates')
+      p.fast([['Metals', '401'], ['World', '410'], ['News', '101'], ['Index', '100']])
+      return [p]
     })
   },
 })
 
-/** One page per station, generated from the roster. Registered on demand by
- *  pageDef(), since the numbers only exist once SIGNAL's roster has arrived. */
-function stationPage(num, station, all, ctx) {
-  const p = new Page()
-  masthead(p, num, 'SIGNAL', { right: `${bandLabel(station.band)} BAND` })
-  p.double(BODY_TOP, 1, clip(station.callsign, 38), YELLOW)
-  p.text(BODY_TOP + 2, 1, `${freqText(station.freq)} KHZ`, WHITE)
-  p.text(BODY_TOP + 2, 14, `${station.tracks.length} TRACKS ON ROTATION`, GREEN)
-  let r = p.wrap(BODY_TOP + 4, 1, station.tagline, 38, CYAN) + 1
-  if (station.desc) r = p.wrap(r, 1, station.desc, 38, WHITE, 19) + 1
-  p.text(21, 1, 'RED: TUNE IN ON SIGNAL', RED)
-  creditLine(p, ctx, 'signal')
-  const i = all.findIndex(x => x.num === num)
-  const next = all[(i + 1) % all.length].num
-  p.fast([['Tune in', `signal:${station.id}`], ['Next', next], ['Listings', '500'], ['Index', '100']])
-  return p
+const money$ = (x) => `$${x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+page('401', 'Gold and silver', {
+  feeds: ['metals'],
+  render(ctx) {
+    return gate(ctx, '401', 'GOLD & SILVER', ['metals'], ({ metals }) => {
+      const p = new Page()
+      masthead(p, '401', 'GOLD & SILVER', { right: 'MONEY' })
+      p.text(BODY_TOP, 1, 'PER TROY OUNCE, IN US DOLLARS', CYAN)
+      const colour = { XAU: YELLOW, XAG: WHITE, XPT: CYAN }
+      let r = BODY_TOP + 2
+      for (const m of metals.metals) {
+        p.text(r, 1, m.name.toUpperCase(), colour[m.symbol] || WHITE)
+        p.double(r + 1, 1, money$(m.price), colour[m.symbol] || WHITE)
+        r += 4
+      }
+      const gold = metals.metals.find(m => m.symbol === 'XAU'), silver = metals.metals.find(m => m.symbol === 'XAG')
+      if (gold && silver) p.text(r, 1, `ONE OUNCE OF GOLD = ${Math.round(gold.price / silver.price)} OF SILVER`, GREEN)
+      creditLine(p, ctx, 'metals')
+      p.fast([['Currency', '400'], ['World', '410'], ['News', '101'], ['Index', '100']])
+      return [p]
+    })
+  },
+})
+
+/**
+ * The world in numbers. The population is the World Bank's latest mid-year
+ * figure grown at its latest growth rate to this second -- an estimate,
+ * ticking, which is what the page says it is. liveMs keeps it moving.
+ */
+export function worldPopulationNow(world, nowMs) {
+  const pop = world['SP.POP.TOTL'], grow = world['SP.POP.GROW']
+  if (!pop) return null
+  const midYear = Date.UTC(pop.year, 6, 1)
+  const years = (nowMs - midYear) / (365.2425 * 864e5)
+  const rate = (grow?.value ?? 0.9) / 100
+  return Math.round(pop.value * Math.pow(1 + rate, years))
 }
+page('410', 'The world in numbers', {
+  feeds: ['world'],
+  liveMs: 1000,
+  render(ctx) {
+    return gate(ctx, '410', 'THE WORLD', ['world'], ({ world }) => {
+      const p = new Page()
+      masthead(p, '410', 'THE WORLD', { right: 'IN NUMBERS' })
+      const pop = worldPopulationNow(world, ctx.now)
+      p.text(BODY_TOP, 1, 'PEOPLE ALIVE NOW (ESTIMATE)', CYAN)
+      if (pop) p.double(BODY_TOP + 1, 1, pop.toLocaleString('en-US'), YELLOW)
+      const line = (r, label, id, fmt) => {
+        const x = world[id]
+        if (!x) return
+        p.text(r, 1, label, WHITE)
+        p.text(r, 26, fmt(x.value).padStart(7), YELLOW)
+        p.text(r, 34, String(x.year), CYAN)
+      }
+      line(BODY_TOP + 5, 'ECONOMIC GROWTH', 'NY.GDP.MKTP.KD.ZG', v => `${v.toFixed(1)}%`)
+      line(BODY_TOP + 7, 'INFLATION', 'FP.CPI.TOTL.ZG', v => `${v.toFixed(1)}%`)
+      line(BODY_TOP + 9, 'UNEMPLOYMENT', 'SL.UEM.TOTL.ZS', v => `${v.toFixed(1)}%`)
+      line(BODY_TOP + 11, 'POPULATION GROWTH', 'SP.POP.GROW', v => `${v.toFixed(2)}%`)
+      p.text(BODY_TOP + 13, 1, 'WHOLE WORLD, LATEST YEAR REPORTED', GREEN)
+      creditLine(p, ctx, 'world')
+      p.fast([['Currency', '400'], ['Metals', '401'], ['News', '101'], ['Index', '100']])
+      return [p]
+    })
+  },
+})
+
+// ---------------------------------------------------------------------------
+// Pause (2026-09-28): the mindful section. Worked out on the set or written
+// in the editorial file -- the quote services a browser could use either
+// had no CORS (ZenQuotes) or no longer answer.
+// ---------------------------------------------------------------------------
+
+/** Box breathing: in four, hold four, out four, hold four. */
+export const BREATH = [['BREATHE IN', 4000], ['HOLD', 4000], ['BREATHE OUT', 4000], ['HOLD', 4000]]
+export const BREATH_CYCLE_MS = BREATH.reduce((n, [, ms]) => n + ms, 0)
+/** Where in the breath `ms` falls: the step, the count within it, and how
+ *  full the lungs are (0..1), which sizes the circle. */
+export function breathAt(ms) {
+  let t = ((ms % BREATH_CYCLE_MS) + BREATH_CYCLE_MS) % BREATH_CYCLE_MS
+  for (let i = 0; i < BREATH.length; i++) {
+    const [word, len] = BREATH[i]
+    if (t < len) {
+      const k = t / len
+      const full = i === 0 ? k : i === 1 ? 1 : i === 2 ? 1 - k : 0
+      return { word, step: i, count: Math.floor(k * 4) + 1, full }
+    }
+    t -= len
+  }
+  return { word: BREATH[0][0], step: 0, count: 1, full: 0 }
+}
+page('500', 'Breathe', {
+  liveMs: 200,
+  render(ctx) {
+    const b = breathAt(ctx.now)
+    const p = new Page()
+    masthead(p, '500', 'BREATHE', { right: 'PAUSE' })
+    // The circle: 80x45 dots. On the tube a dot is about 1.24 times as wide
+    // as it is tall (half a 9-dot cell stretched onto a 4:3 face, by a third
+    // of a 16-line one), so x distances count for 1.24 to keep it round.
+    // The first cut had the factor inverted and drew an oval.
+    const radius = 3 + b.full * 15
+    const art = pixels(80, 45, (x, y) => {
+      const d = Math.hypot((x - 40) * 1.24, y - 22)
+      return d < radius ? 'C' : null
+    })
+    p.art(BODY_TOP, 0, art, { C: b.step === 2 ? BLUE : CYAN })
+    const word = b.word
+    p.band(19, BLACK); p.band(20, BLACK)
+    p.double(19, Math.floor((COLS - word.length) / 2), word, WHITE)
+    p.text(21, 19, String(b.count), YELLOW)
+    p.text(22, 1, 'IN FOUR, HOLD FOUR, OUT FOUR, HOLD FOUR', GREEN)
+    p.fast([['A thought', '501'], ['Index', '100'], ['News', '101'], ['Gallery', '700']])
+    return [p]
+  },
+})
+
+/** Today's thought: one from the editorial list, the same all day. */
+export function thoughtFor(list, nowMs) {
+  if (!list?.length) return null
+  const d = new Date(nowMs)
+  const day = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 0)) / 864e5)
+  return list[day % list.length]
+}
+page('501', 'A thought', {
+  render(ctx) {
+    const t = thoughtFor(ctx.editorial.thoughts, ctx.now)
+    const p = new Page()
+    masthead(p, '501', 'A THOUGHT', { right: 'FOR TODAY' })
+    if (!t) { p.wrap(BODY_TOP, 1, 'No thoughts written yet.', 38, CYAN); return [p] }
+    const lines = wrapText(`"${t.text}"`, 36)
+    let r = Math.max(BODY_TOP + 1, 12 - lines.length)
+    for (const l of lines) p.text(r++, 2, l, YELLOW)
+    if (t.by) p.text(r + 1, 38 - Math.min(36, t.by.length + 2), clip(`- ${t.by}`, 36), CYAN)
+    p.fast([['Breathe', '500'], ['Index', '100'], ['News', '101'], ['Gallery', '700']])
+    return [p]
+  },
+})
 
 page('600', 'Quiz', {
   render(ctx) {
@@ -928,7 +913,7 @@ page('600', 'Quiz', {
         r += 2
       })
       p.text(22, 1, 'R REVEALS THE ANSWERS', MAGENTA)
-      p.fast([['Index', '100'], ['Notices', '190'], ['Gallery', '700'], ['Help', '199']])
+      p.fast([['Index', '100'], ['Gallery', '700'], ['Pause', '500'], ['Help', '199']])
       return p
     })
   },
@@ -968,20 +953,18 @@ const GALLERY = [
     },
   },
   {
-    title: 'SIGNAL',
+    title: 'THE SEA',
     draw(p) {
-      // SIGNAL's own mark: two arcs over a dot, from its favicon.
-      const cx = 40, cy = 44
+      // Swell lines under a low sun: three sine waves, each a band of dots.
       const art = pixels(80, 57, (x, y) => {
-        const d = Math.hypot(x - cx, (y - cy) * 1.6)
-        if (d < 3.2) return 'G'
-        if (y > cy - 2) return null
-        if (d > 13 && d < 17) return 'G'
-        if (d > 25 && d < 29) return 'G'
+        if ((x - 22) ** 2 + ((y - 16) * 1.6) ** 2 < 70) return 'Y'
+        for (const [base, amp, len, ch] of [[30, 2, 23, 'C'], [38, 3, 17, 'B'], [47, 3.5, 13, 'W']]) {
+          const w = base + amp * Math.sin((x + base) / len * Math.PI * 2)
+          if (Math.abs(y - w) < 1) return ch
+        }
         return null
       })
-      p.art(3, 0, art, { G: GREEN })
-      p.text(22, 12, 'TUNE IN: PAGE 500', YELLOW)
+      p.art(3, 0, art, { Y: YELLOW, C: CYAN, B: BLUE, W: WHITE })
     },
   },
   {
@@ -1010,53 +993,9 @@ page('700', 'Gallery', {
       masthead(p, '700', 'GALLERY', { sub: i, subs: GALLERY.length, right: 'PICTURES' })
       g.draw(p)
       p.text(23, 1, `${g.title}, IN 2 BY 3 BLOCKS`, CYAN)
-      p.fast([['Index', '100'], ['Sky', '310'], ['Quiz', '600'], ['Overnight', '800']])
+      p.fast([['Index', '100'], ['Sky', '310'], ['Quiz', '600'], ['Breathe', '500']])
       return p
     })
-  },
-})
-
-page('800', 'Overnight pages', {
-  feeds: ['signal'],
-  render(ctx) {
-    const p = new Page()
-    masthead(p, '800', 'OVERNIGHT', { right: 'AFTER HOURS' })
-    const o = ctx.editorial.overnight || {}
-    let r = p.wrap(BODY_TOP, 1, `From ${pad2(o.startHour ?? 0)}:00, a set left alone turns its own pages, a few seconds each, while a SIGNAL station plays underneath. Key any page to take the set back.`, 38, WHITE) + 1
-    const st = ctx.entry('signal')?.data?.stations?.find(s => s.id === o.stationId)
-    p.text(r, 1, "TONIGHT'S STATION", YELLOW); r += 2
-    if (st) {
-      p.text(r, 1, freqText(st.freq).padStart(6), YELLOW); p.text(r, 9, clip(st.callsign, 30), WHITE)
-      p.text(r + 1, 9, clip(st.tagline, 30), CYAN); r += 3
-    } else { p.text(r, 1, 'WAITING FOR SIGNAL\'S ROSTER', CYAN); r += 2 }
-    r = p.wrap(r, 1, 'The music is YouTube, through SIGNAL\'s own tracks. M mutes it.', 38, GREEN) + 1
-    p.text(21, 1, ctx.env.overnight?.on ? 'OVERNIGHT IS ON.  RED STOPS IT.' : 'RED STARTS IT NOW.', RED)
-    p.fast([[ctx.env.overnight?.on ? 'Stop' : 'Start now', 'overnight'], ['Subtitles', '888'], ['SIGNAL', '500'], ['Index', '100']])
-    return [p]
-  },
-})
-
-page('888', 'Subtitles', {
-  render(ctx) {
-    const p = new Page()
-    const now = ctx.env.overnight?.on ? ctx.env.overnight.track : null
-    if (!now) {
-      masthead(p, '888', 'SUBTITLES')
-      p.wrap(BODY_TOP + 2, 1, 'No subtitles on this service. When the overnight music is playing, this page says what it is.', 38, WHITE)
-      p.fast([['Overnight', '800'], ['Index', '100'], null, null])
-      return [p]
-    }
-    // Subtitles sit low on a black box over the picture, in double height,
-    // the way page 888 did.
-    const lines = wrapText(`${now.title}${now.artist ? ` - ${now.artist}` : ''}`, 34).slice(0, 2)
-    lines.forEach((l, i) => {
-      const r = 16 + i * 3
-      const c = Math.floor((COLS - l.length) / 2)
-      p.band(r, BLACK); p.band(r + 1, BLACK)
-      p.double(r, c, l, i ? CYAN : YELLOW, BLACK)
-    })
-    p.fast([['Overnight', '800'], ['Index', '100'], null, null])
-    return [p]
   },
 })
 
@@ -1068,39 +1007,24 @@ page('888', 'Subtitles', {
 export const PAGES = new Map(defs.map(d => [d.num, d]))
 
 /**
- * The definition for a page number, including the ones that only exist once
- * a feed has answered (SIGNAL's station pages). Null for a page the service
- * does not carry, which the set searches for forever, as a real one did.
+ * The definition for a page number, including notice pages written in the
+ * editorial file. Null for a page the service does not carry, which the set
+ * searches for forever, as a real one did.
  */
 export function pageDef(num, ctx) {
   const n = String(num).toUpperCase()
   if (PAGES.has(n)) return PAGES.get(n)
   const notice = (ctx?.editorial?.notices || []).find(x => String(x.page).toUpperCase() === n)
   if (notice) return { num: n, title: `Notice: ${notice.title || n}`, feeds: [], render: () => [noticePage({ ...notice, page: n })] }
-  if (/^1[12][0-9A-F]$/.test(n) && ctx?.entry) {
-    const stories = newsStories(ctx)
-    const story = stories.find(x => x.num === n)
-    if (story) return { num: n, title: `News: ${story.label}`, feeds: ['itn', 'events'], render: (c) => [storyPage(story, stories, c)] }
-  }
-  const roster = ctx?.entry?.('signal')?.data
-  if (roster && /^5[12]\d$/.test(n)) {
-    const all = stationPages(roster)
-    const hit = all.find(x => x.num === n)
-    if (hit) return { num: n, title: `SIGNAL: ${hit.station.callsign}`, feeds: ['signal'], render: (c) => [stationPage(n, hit.station, all, c)] }
-  }
   return null
 }
 
-/** The pages UP and DOWN step through: everything not hidden, in order,
- *  station pages included once the roster is in. */
+/** The pages UP and DOWN step through: everything not hidden, in order. */
 export function pageOrder(ctx) {
   const nums = defs.filter(d => !d.hidden).map(d => d.num)
   for (const n of ctx?.editorial?.notices || []) nums.push(String(n.page).toUpperCase())
-  if (ctx?.entry) nums.push(...newsStories(ctx).map(x => x.num))
-  const roster = ctx?.entry?.('signal')?.data
-  if (roster) nums.push(...stationPages(roster).map(x => x.num))
   return [...new Set(nums)].sort((a, b) => parseInt(a, 16) - parseInt(b, 16))
 }
 
-/** All the magazines' index entries, for the lint: every one must exist. */
-export const INDEX = INDEX_ENTRIES
+/** Every page the index points at, for the lint: each must exist. */
+export const INDEX = SECTIONS.flatMap(s => s.pages).concat([['NOTICES', '190'], ['HELP', '199']])

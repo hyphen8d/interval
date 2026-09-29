@@ -33,11 +33,12 @@ fonts/ -- Terminus Font
 --------------------------------------------------------------------------
 Page content
 
-    News, On this day, the featured article and the most-read list come
-    from Wikipedia, whose text is CC BY-SA 4.0; each page credits it on its
-    source line. Earthquakes: USGS (public domain). Space weather: NOAA
-    SWPC (public domain). Forecasts: Open-Meteo (CC BY 4.0). Tech: Hacker
-    News. Station listings: SIGNAL.
+    News, Did you know and On this day come from Wikipedia, whose text is
+    CC BY-SA 4.0; each page credits it on its source line. Earthquakes:
+    USGS (public domain). Space weather: NOAA SWPC (public domain).
+    Forecasts: Open-Meteo (CC BY 4.0). Exchange rates: the European Central
+    Bank, via Frankfurter. Metals: gold-api.com. World figures: the World
+    Bank (CC BY 4.0). Thoughts on page 501 are short quotations, credited.
 
     Teletext, Ceefax and Oracle are other people's names; INTERVAL uses
     none of them for itself.

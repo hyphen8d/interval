@@ -90,7 +90,8 @@ export function fold(text) {
   for (const ch of String(text ?? '')) {
     if (FOLD.has(ch)) { out += FOLD.get(ch); continue }
     const code = ch.codePointAt(0)
-    if (code < 0x80 || ch === '£' || ch === '°') { out += ch; continue }
+    // ▲ and ▼ are the money pages' arrows; Terminus has both.
+    if (code < 0x80 || ch === '£' || ch === '°' || ch === '▲' || ch === '▼') { out += ch; continue }
     const base = ch.normalize('NFKD').replace(/[̀-ͯ]/g, '')
     out += /^[\x20-\x7e]+$/.test(base) ? base : '?'
   }

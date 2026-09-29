@@ -9,8 +9,8 @@
 //   - every index entry is a page that exists
 //   - editorial.json: notice pages on free numbers, titles that fit the
 //     masthead, lines that fit the page; quiz answers that fit their row;
-//     four-keys questions with four options and a real answer; an overnight
-//     station SIGNAL actually has
+//     four-keys questions with four options and a real answer; thoughts
+//     short enough to read at a glance
 //   - the help page's labels fit its column
 //
 // Exported as lint() so the admin server and the suite run the same code the
@@ -27,8 +27,10 @@ export const QUIZ_ANSWER_MAX = 32
 export const FOURKEYS_OPTION_MAX = 24
 export const FASTEXT_LABEL_MAX = 9
 export const HELP_LABEL_MAX = 28
+/** A thought is read at a glance: eight lines of the page at most. */
+export const THOUGHT_MAX = 240
 
-const SPECIAL = /^(overnight|locate|sub:next|signal:[\w-]+|game:(\d|next|reset))$/
+const SPECIAL = /^(locate|sub:next|game:(\d|next|reset))$/
 
 /**
  * @param {object} [o]
@@ -51,15 +53,15 @@ export async function lint({ editorial } = {}) {
     const num = String(n.page ?? '').toUpperCase()
     const where = `notice ${num || `#${i + 1}`}`
     if (!validPage(num)) { errors.push(`${where}: "${n.page}" is not a page number (1-8 then two hex digits)`); continue }
-    if (PAGES.has(num)) errors.push(`${where}: ${num} is already a fixed page (${PAGES.get(num).title})`)
-    if (/^5[12]\d$/.test(num)) errors.push(`${where}: 511-529 belong to SIGNAL's station pages`)
+    // 190 is the one fixed page drawn FROM a notice: the welcome.
+    if (PAGES.has(num) && num !== '190') errors.push(`${where}: ${num} is already a fixed page (${PAGES.get(num).title})`)
     if (seen.has(num)) errors.push(`${where}: two notices on the same page`)
     seen.add(num)
     if (!n.title) warnings.push(`${where}: no title; the masthead will say NOTICES`)
     if ((n.title || '').length > MASTHEAD_TITLE_MAX) errors.push(`${where}: title is ${n.title.length} long; ${MASTHEAD_TITLE_MAX} fit the masthead`)
     for (const e of lintLines(n.lines || [], { top: 4, bottom: 22, col: 1 })) errors.push(`${where}: ${e}`)
   }
-  if (!seen.has('190')) errors.push('editorial: page 190 (NOTICES) is on the index and has no notice')
+  if (!seen.has('190')) errors.push('editorial: page 190 (WELCOME), where the set lands, has no notice')
 
   const quiz = editorial.quiz || []
   if (!quiz.length) errors.push('editorial: the quiz (600) has no questions')
@@ -83,15 +85,13 @@ export async function lint({ editorial } = {}) {
     if (!Number.isInteger(q.answer) || q.answer < 0 || q.answer > 3) errors.push(`${where}: answer must be 0-3 (red, green, yellow, cyan)`)
   })
 
-  const o = editorial.overnight || {}
-  for (const k of ['startHour', 'endHour']) {
-    if (!Number.isInteger(o[k]) || o[k] < 0 || o[k] > 23) errors.push(`overnight: ${k} must be a whole hour, 0-23`)
-  }
-  if (!(o.idleMinutes >= 1)) errors.push('overnight: idleMinutes must be at least 1')
-  const roster = ctx.entry('signal').data
-  if (!roster.stations.some(s => s.id === o.stationId)) {
-    errors.push(`overnight: SIGNAL has no public station "${o.stationId}" (in the fixture roster -- if it is new, refresh tests/fixtures/signal-stations.json)`)
-  }
+  const thoughts = editorial.thoughts || []
+  if (!thoughts.length) errors.push('editorial: A THOUGHT (501) has no thoughts')
+  thoughts.forEach((t, i) => {
+    if (!t.text || !String(t.text).trim()) errors.push(`thought ${i + 1}: no text`)
+    else if (String(t.text).length > THOUGHT_MAX) errors.push(`thought ${i + 1}: ${t.text.length} long; ${THOUGHT_MAX} read at a glance`)
+    if ((t.by || '').length > 30) errors.push(`thought ${i + 1}: "by" is ${t.by.length} long; 30 fit`)
+  })
 
   // -- keys --------------------------------------------------------------
   for (const k of KEYS) if (k.label.length > HELP_LABEL_MAX) errors.push(`help: "${k.label}" is ${k.label.length} long; ${HELP_LABEL_MAX} fit`)

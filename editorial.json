@@ -1,32 +1,24 @@
 {
-  "overnight": {
-    "stationId": "slow-orbit",
-    "startHour": 0,
-    "endHour": 6,
-    "idleMinutes": 10
-  },
   "notices": [
     {
       "page": "190",
-      "title": "NOTICES",
+      "title": "WELCOME",
       "lines": [
-        "[dh][y]Welcome to INTERVAL",
+        "[dh][y]This is INTERVAL",
         "",
-        "[w]A text service for the SIGNAL network,",
-        "[w]carried in the gaps of the picture.",
+        "[w]Bite-sized pages on a television:",
+        "[w]the news, the day, the weather, the",
+        "[w]world's money, and a moment's pause.",
         "",
-        "[c]Every page is sent round in a loop.",
-        "[c]Key a number and the set waits for",
-        "[c]that page to come past. The number",
-        "[c]in the top line counts while it does.",
+        "[c]Press [y]N[c] and the set turns its own",
+        "[c]pages, section by section. Press [y]H[c]",
+        "[c]to stay in the section you like.",
         "",
-        "[w]Pages worth a look tonight:",
-        "[y] 101 [w]the news    [y] 310 [w]the moon",
-        "[y] 500 [w]SIGNAL's stations",
-        "[y] 600 [w]a quiz, answers hidden",
+        "[w]Or key any page. Some to start with:",
+        "[y] 101 [w]the news   [y] 102 [w]did you know",
+        "[y] 300 [w]weather    [y] 500 [w]breathe",
         "",
-        "[g]Leave the set on after midnight and it",
-        "[g]turns its own pages. See 800."
+        "[g]100 is the index. 199 is help."
       ]
     }
   ],
@@ -60,8 +52,8 @@
       "a": "2012"
     },
     {
-      "q": "Which SIGNAL station sits at 808.0 on the YM band?",
-      "a": "HACKBACK"
+      "q": "What colour were the fastext keys, left to right?",
+      "a": "RED GREEN YELLOW CYAN"
     }
   ],
   "fourkeys": [
@@ -144,6 +136,64 @@
         "101"
       ],
       "answer": 2
+    }
+  ],
+  "thoughts": [
+    {
+      "text": "Nothing is worth more than this day.",
+      "by": "Goethe"
+    },
+    {
+      "text": "The quieter you become, the more you can hear.",
+      "by": "Ram Dass"
+    },
+    {
+      "text": "Very little is needed to make a happy life.",
+      "by": "Marcus Aurelius"
+    },
+    {
+      "text": "Loss is nothing else but change, and change is nature's delight.",
+      "by": "Marcus Aurelius"
+    },
+    {
+      "text": "Look deep into nature, and then you will understand everything better.",
+      "by": "Albert Einstein"
+    },
+    {
+      "text": "It is not that we have a short time to live, but that we waste a lot of it.",
+      "by": "Seneca"
+    },
+    {
+      "text": "The present moment is filled with joy and happiness. If you are attentive, you will see it.",
+      "by": "Thich Nhat Hanh"
+    },
+    {
+      "text": "Adopt the pace of nature: her secret is patience.",
+      "by": "Ralph Waldo Emerson"
+    },
+    {
+      "text": "Rest is not idleness.",
+      "by": "John Lubbock"
+    },
+    {
+      "text": "Be here now.",
+      "by": "Ram Dass"
+    },
+    {
+      "text": "We suffer more often in imagination than in reality.",
+      "by": "Seneca"
+    },
+    {
+      "text": "Walk as if you are kissing the Earth with your feet.",
+      "by": "Thich Nhat Hanh"
+    },
+    {
+      "text": "Begin at once to live.",
+      "by": "Seneca"
+    },
+    {
+      "text": "Wherever you are, be all there.",
+      "by": "Jim Elliot"
     }
   ]
 }

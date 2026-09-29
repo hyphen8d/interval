@@ -199,15 +199,10 @@ async function lintEditorial(editorial) {
 export function normaliseEditorial(e) {
   const str = (x) => String(x ?? '')
   return {
-    overnight: {
-      stationId: str(e?.overnight?.stationId),
-      startHour: Number(e?.overnight?.startHour),
-      endHour: Number(e?.overnight?.endHour),
-      idleMinutes: Number(e?.overnight?.idleMinutes),
-    },
     notices: (e?.notices || []).map(n => ({ page: str(n.page).toUpperCase(), title: str(n.title), lines: (n.lines || []).map(str) })),
     quiz: (e?.quiz || []).map(q => ({ q: str(q.q), a: str(q.a) })),
     fourkeys: (e?.fourkeys || []).map(q => ({ q: str(q.q), options: (q.options || []).map(str), answer: Number(q.answer) })),
+    thoughts: (e?.thoughts || []).map(t => ({ text: str(t.text), by: str(t.by) })),
   }
 }
 

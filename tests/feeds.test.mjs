@@ -4,8 +4,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  parseITN, parseOnThisDay, parseFeatured, parseQuakes, parseHnItem, parseKp, parseForecast,
-  parseSignalRoster, shortPlace, decodeEntities, FeedCache, backoffMs, staleAfter, FEEDS, forecastUrl,
+  parseITN, parseOnThisDay, parseQuakes, parseKp, parseForecast, parseDYK, parseRates, parseMetal,
+  parseWorldBank, shortPlace, decodeEntities, FeedCache, backoffMs, staleAfter, FEEDS, forecastUrl,
 } from '../feeds.js'
 
 const fx = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'))
@@ -35,27 +35,12 @@ test('On this day: the editorial picks in year order, text tidied', () => {
   assert.ok(!o.holidays.some(h => h.includes('\n')))
 })
 
-test('featured: article of the day and the most-read list', () => {
-  const f = parseFeatured(fx('wiki-featured.json'))
-  assert.equal(f.tfa.title, 'Genshin Impact')
-  assert.ok(f.tfa.extract.length > 100)
-  assert.ok(f.mostread.length >= 10)
-  assert.ok(f.mostread.every(a => a.title && Number.isFinite(a.views)))
-})
-
 test('earthquakes: newest first, places shortened to the named place', () => {
   const q = parseQuakes(fx('usgs-4.5-day.json'))
   assert.ok(q.length > 10)
   for (let i = 1; i < q.length; i++) assert.ok(q[i - 1].time >= q[i].time)
   assert.equal(shortPlace('2 km SW of Sakai, Japan'), 'Sakai, Japan')
   assert.equal(shortPlace('Mid-Atlantic Ridge'), 'Mid-Atlantic Ridge')
-})
-
-test('Hacker News item: title, score, comments and the bare domain', () => {
-  const s = parseHnItem(fx('hn-item.json'))
-  assert.equal(s.domain, 'github.com')
-  assert.ok(s.score > 0 && s.comments >= 0)
-  assert.equal(parseHnItem({}), null)
 })
 
 test('K-index: both shapes the endpoint has served', () => {
@@ -73,15 +58,6 @@ test('forecast: today in three parts, five days, units read from the response', 
   assert.equal(w.units, 'F')
   assert.equal(w.days[0].sunrise, '06:49')
   assert.match(forecastUrl(1, 2, 'C'), /temperature_unit=celsius/)
-})
-
-test("SIGNAL's roster: public stations only, in frequency order", () => {
-  const r = parseSignalRoster(fx('signal-stations.json'))
-  assert.equal(r.stations.length, 16)
-  const secret = fx('signal-stations.json').SECRET_STATIONS.map(s => s.id)
-  assert.ok(!r.stations.some(s => secret.includes(s.id)), 'the listings keep the secrets')
-  for (let i = 1; i < r.stations.length; i++) assert.ok(r.stations[i - 1].freq <= r.stations[i].freq)
-  assert.ok(r.stations.every(s => s.tracks.every(t => /^[\w-]{11}$/.test(t.youtubeId))))
 })
 
 test('entities decode, named and numeric', () => {
@@ -161,4 +137,29 @@ test('Current events: the innermost items only, sources dropped, filed by sectio
   assert.ok(!today.some(e => e.text === 'Somali Civil War'), 'not the topic headings the news hangs under')
   assert.equal(today[0].category, 'Armed conflicts and attacks')
   assert.equal(parseCurrentEvents(all['2026_September_27']).length, 18)
+})
+
+test('Did you know: the "...that" facts, as questions, without the photo asides', () => {
+  const { facts } = parseDYK(fx('wiki-dyk.json'))
+  assert.equal(facts.length, 9)
+  assert.ok(facts.every(f => f.endsWith('?') && !/^\.\.\./.test(f) && !/pictured/.test(f)))
+  assert.ok(!facts.some(f => /^(verify|reset|purge)$/i.test(f)), 'not the template toolbar')
+})
+
+test("rates: each against the dollar, with the working day before for its arrow", () => {
+  const r = parseRates(fx('frankfurter-usd.json'))
+  assert.equal(r.date, '2026-09-28')
+  assert.equal(r.prevDate, '2026-09-25', 'a weekend has no rates: the day before is Friday')
+  const eur = r.rates.find(x => x.code === 'EUR')
+  assert.deepEqual([eur.rate, eur.prev], [0.87889, 0.87696])
+})
+
+test('metals and the World Bank: a price each, a value and year each', () => {
+  const m = parseMetal(fx('metals.json').XAU)
+  assert.equal(m.name, 'Gold')
+  assert.ok(m.price > 1000)
+  const w = parseWorldBank(fx('worldbank-world.json'))
+  assert.equal(w['SP.POP.TOTL'].year, 2025)
+  assert.ok(w['FP.CPI.TOTL.ZG'].value > 0)
+  assert.throws(() => parseWorldBank([{}, []]))
 })

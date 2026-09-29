@@ -29,16 +29,17 @@ let fontCache = null
 export function fixtureFetch(url) {
   const u = String(url)
   if (u.includes('Template:In_the_news')) return fixture('wiki-itn.json')
+  if (u.includes('Template:Did_you_know')) return fixture('wiki-dyk.json')
+  if (u.includes('api.frankfurter.dev')) return fixture('frankfurter-usd.json')
+  if (u.includes('api.gold-api.com/price/')) return fixture('metals.json')[u.split('/').pop()] ?? null
+  if (u.includes('api.worldbank.org')) return fixture('worldbank-world.json')
   // Keyed by the portal's own title; a day not captured is a 404, which is
   // how the harness's own boot time (00:00 UTC on the 29th) exercises the
   // fall-back to yesterday.
   const ce = u.match(/Portal:Current_events\/(\w+)&/)
   if (ce) return fixture('wiki-current-events.json')[ce[1]] ?? null
   if (u.includes('/feed/onthisday/')) return fixture('wiki-onthisday.json')
-  if (u.includes('/feed/featured/')) return fixture('wiki-featured.json')
   if (u.includes('earthquake.usgs.gov')) return fixture('usgs-4.5-day.json')
-  if (u.includes('topstories.json')) return fixture('hn-topstories.json')
-  if (u.includes('hacker-news.firebaseio.com/v0/item/')) return fixture('hn-item.json')
   if (u.includes('swpc.noaa.gov')) return fixture('swpc-kp.json')
   if (u.includes('api.open-meteo.com')) return fixture('open-meteo.json')
   return null
@@ -55,7 +56,7 @@ export function fixtureFetch(url) {
  * @param {boolean} [o.secure] isSecureContext
  * @param {boolean} [o.power] switch on straight away (default true)
  */
-export async function boot({ feeds = 'fixtures', saved = null, query = '', location = false, secure = true, power = true, startAt = BASE_TIME, signal = true } = {}) {
+export async function boot({ feeds = 'fixtures', saved = null, query = '', location = false, secure = true, power = true, startAt = BASE_TIME } = {}) {
   const tag = `test${++bootCount}`
   let now = 0
   const timers = []
@@ -124,25 +125,6 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
     return Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body)) })
   }
   let servedBuild = tag
-  const roster = fixture('signal-stations.json')
-  globalThis.INTERVAL_IMPORT_MODULE = async () => {
-    if (!signal || feeds === 'fail') throw new Error('roster unreachable')
-    if (feeds === 'never') return new Promise(() => {})
-    return roster
-  }
-  // A fake YouTube player for the overnight music: records what it was asked
-  // to play, and becomes ready on the next timer tick as the real one does.
-  const played = []
-  globalThis.YT = {
-    Player: class {
-      constructor(id, opts) { this.opts = opts; setTimeout(() => opts.events.onReady?.(), 0) }
-      loadVideoById(v) { played.push(v) }
-      mute() { this.muted = true }
-      unMute() { this.muted = false }
-      stopVideo() { played.push('stop') }
-    },
-  }
-  globalThis.INTERVAL_YT_QUEUE = []
   const fastextLabels = []
   globalThis.INTERVAL_FASTEXT = (labels) => fastextLabels.push(labels)
   globalThis.INTERVAL_BUILD = tag
@@ -163,7 +145,7 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
   const s = { term, crt, program }
 
   const h = {
-    program, term, crt, s, announced, requests, opened, geoCalls, reloads, store, played, fastextLabels,
+    program, term, crt, s, announced, requests, opened, geoCalls, reloads, store, fastextLabels,
     get now() { return now },
     /** Move the clock, driving frames and timers. */
     advance(ms) {

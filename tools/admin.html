@@ -178,13 +178,9 @@
         <button class="act" id="fk-add">add question</button>
       </div>
       <div class="panel">
-        <h2>Overnight &mdash; page 800</h2>
-        <div class="grid" style="grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
-          <label class="f">SIGNAL station <select id="on-station"></select></label>
-          <label class="f">from hour <input type="number" id="on-start" min="0" max="23"></label>
-          <label class="f">to hour <input type="number" id="on-end" min="0" max="23"></label>
-          <label class="f">idle minutes <input type="number" id="on-idle" min="1"></label>
-        </div>
+        <h2>Thoughts &mdash; page 501, one a day</h2>
+        <div id="th"></div>
+        <button class="act" id="th-add">add thought</button>
       </div>
     </div>
   </section>
@@ -308,7 +304,7 @@ let location_ = null
 let ready = false
 const feeds = new FeedCache({
   fetch: (...a) => fetch(...a), now: () => Date.now(), storage: null,
-  env: { date: () => new Date(), get location() { return location_ }, units: navigator.language === 'en-US' ? 'F' : 'C', signalUrl: null, importModule: (u) => import(u) },
+  env: { date: () => new Date(), get location() { return location_ }, units: navigator.language === 'en-US' ? 'F' : 'C' },
   onChange: () => { if (!ready) return; renderPageList(); renderPreview(); if (!$('tab-sources').hidden) renderSources() },
 })
 // A fixed place for the weather preview: Greenwich, as check-feeds uses.
@@ -317,7 +313,7 @@ for (const id of Object.keys(FEEDS)) feeds.ensure(id)
 
 const ctx = () => ({
   entry: (id) => feeds.get(id), status: (id) => feeds.status(id), now: Date.now(), date: new Date(), editorial,
-  env: { locationState: 'granted', overnight: { on: false }, game: { i: 0, score: 0, answered: null, best: 0 } },
+  env: { locationState: 'granted', game: { i: 0, score: 0, answered: null, best: 0 } },
 })
 
 // -------------------------------------------------------------- drawing
@@ -404,7 +400,7 @@ $('pv-next').onclick = () => { sub++; renderPreview() }
 $('pv-reveal').onchange = renderPreview
 $('pv-mono').onchange = renderPreview
 $('pv-open').onclick = () => { $('set').src = `/?page=${current}&power=on&t=${Date.now()}` }
-$('set').src = '/?page=100&power=on'
+$('set').src = '/?page=190&power=on'
 renderPageList()
 renderPreview()
 
@@ -482,19 +478,15 @@ function renderFourKeys() {
 }
 $('fk-add').onclick = () => { editorial.fourkeys.push({ q: '', options: ['', '', '', ''], answer: 0 }); markDirty(); renderFourKeys() }
 
-function renderOvernight() {
-  const o = editorial.overnight
-  const roster = feeds.get('signal')?.data?.stations || []
-  const sel = $('on-station')
-  const opts = roster.length ? roster : [{ id: o.stationId, callsign: o.stationId, freq: NaN }]
-  sel.replaceChildren(...opts.map(s => h('option', { value: s.id, selected: s.id === o.stationId }, `${Number.isFinite(s.freq) ? s.freq.toFixed(1) + ' ' : ''}${s.callsign}`)))
-  $('on-start').value = o.startHour; $('on-end').value = o.endHour; $('on-idle').value = o.idleMinutes
+function renderThoughts() {
+  editorial.thoughts ||= []
+  $('th').replaceChildren(...editorial.thoughts.map((t, i) => h('div', { class: 'qrow' },
+    h('span', { class: 'muted' }, String(i + 1)),
+    h('input', { type: 'text', value: t.text, placeholder: 'the thought', maxlength: 240, oninput: (e) => { t.text = e.target.value; markDirty() } }),
+    h('input', { type: 'text', value: t.by, placeholder: 'by', maxlength: 30, oninput: (e) => { t.by = e.target.value; markDirty() } }),
+    h('button', { class: 'act', title: 'remove', onclick: () => { editorial.thoughts.splice(i, 1); markDirty(); renderThoughts() } }, 'x'))))
 }
-$('on-station').onchange = (e) => { editorial.overnight.stationId = e.target.value; markDirty() }
-$('on-start').oninput = (e) => { editorial.overnight.startHour = +e.target.value; markDirty() }
-$('on-end').oninput = (e) => { editorial.overnight.endHour = +e.target.value; markDirty() }
-$('on-idle').oninput = (e) => { editorial.overnight.idleMinutes = +e.target.value; markDirty() }
-feeds.ensure('signal').then(renderOvernight)
+$('th-add').onclick = () => { editorial.thoughts.push({ text: '', by: '' }); markDirty(); renderThoughts() }
 
 $('ed-check').onclick = check
 $('ed-save').onclick = async () => {
@@ -505,7 +497,7 @@ $('ed-save').onclick = async () => {
   else $('ed-state').innerHTML = '<span class="bad">not saved: fix the errors first</span>'
 }
 addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = '' } })
-renderNotices(); renderQuiz(); renderFourKeys(); renderOvernight(); showIssues(state.lint)
+renderNotices(); renderQuiz(); renderFourKeys(); renderThoughts(); showIssues(state.lint)
 
 // -------------------------------------------------------------- sources tab
 const ago = (iso) => {

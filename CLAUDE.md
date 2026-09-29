@@ -4,13 +4,20 @@ Guidance for Claude Code (and anyone) working in this repository.
 
 ## What this is
 
-INTERVAL is a teletext service for the SIGNAL network, on a simulated colour
-CRT. It's a sibling of SIGNAL (`~/Work/signal`, hyphen8d/signal), built on
-the same vendored engine and the same habits. Read `README.md` for what a
-viewer sees. The governing design test is SIGNAL's, translated: **"Would a
-real teletext set have this?"** Remote-control keys, a carousel you wait
-on, fastext, REVEAL, HOLD, SIZE, a black-and-white set: yes. A search box, a
-scroll bar, a loading spinner: no.
+INTERVAL is teletext on a simulated colour CRT: **bite-sized pages you put on
+and leave to cycle**. It's a sibling of SIGNAL (`~/Work/signal`,
+hyphen8d/signal), built on the same vendored engine and the same habits, but
+it no longer links to SIGNAL at all (2026-09-28). Read `README.md` for what a
+viewer sees.
+
+**The brief (2026-09-28, from the owner) outranks everything below:** every
+page is glanceable, readable in about ten seconds; the set is something you
+switch on and let cycle; and if you want more, you go and find it elsewhere.
+A page that needs *reading* doesn't belong here. That's why story pages, the
+most-read list, Hacker News, the article of the day and the SIGNAL listings
+were all built and then removed the same day. Under that brief, SIGNAL's
+design test still applies, translated: **"Would a real teletext set have
+this?"**
 
 ## Commands
 
@@ -34,8 +41,7 @@ itself because `spawn` has no shell.
 
 Useful URL parameters: `?page=NNN` opens a page, `?power=on` switches on
 without a keypress (silently: no gesture, no sound), `?rx=0.3` forces
-reception, `?remote=1` shows the phone remote on a desktop, `?signal=<url>`
-reads a different SIGNAL roster.
+reception, and `?remote=1` shows the phone remote on a desktop.
 
 ## Architecture
 
@@ -56,8 +62,8 @@ imported bare throughout, as in SIGNAL.
 | `feeds.js` | Every source's URL, parser and refresh period, and `FeedCache` (dated keys, stale-after, backoff, warm start from localStorage except weather). Pure apart from `fetch`. |
 | `pages.js` | The page map: every page, its magazine, its sources, and `render(ctx) -> Page[]` (one per subpage). This is the equivalent of SIGNAL's `stations.js`. |
 | `markup.js` | The `[y]colour [?]hidden[/?] [dh]` markup editorial pages are written in. |
-| `editorial.json` | Hand-written content: notice pages, the quiz, the four-keys game, overnight settings. The admin dashboard edits it. |
-| `program.js` | The set: power, keys, the carousel wait, reception, overnight, drawing a page onto the tube. |
+| `editorial.json` | Hand-written content: notice pages (190, the welcome, among them), the quiz, the four-keys game, and the thoughts for 501. The admin dashboard edits it. |
+| `program.js` | The set: power, keys, the carousel wait, reception, cycling, drawing a page onto the tube. |
 | `sky.js` | The moon, from the date. |
 | `pointer.js` | Touch: screen position to page cell through the CRT's curve, and tap/swipe classification. Pure. |
 | `constants.js` | `KEYS` (read by page 199, the tests and `index.html`'s summary) and the colour modes. |
@@ -99,11 +105,25 @@ rebuilt.
   (noise, snow, beam width, roll): SIGNAL's tuning distance, as reception. It
   comes from the weather at the viewer's location (storms and rain), rare
   interference bursts, or `?rx=`.
-- **Station pages are generated.** 511-519 for YM and 521-529 for ZM, in
-  frequency order, from SIGNAL's roster. That roster is imported live from
-  `https://hyphen8d.github.io/signal/stations.js` (pure data, CORS-open), so
-  the listings can't drift from what SIGNAL plays. The secret stations are
-  in `SECRET_STATIONS`, not `STATIONS`, and are never listed.
+- **The seven sections** are `pages.js` `SECTIONS`: news, today, weather,
+  money, pause, quiz and gallery, each a single magazine. The index is drawn
+  from the same list, and so is cycling.
+- **Cycling is manual.** N starts it; the set never cycles by itself (a test
+  holds that). It shows every page of a section, then the next section, round
+  all seven. Each page stays up long enough for its subpages (12-36s,
+  `cycleDwell`), and the breathing page for two full breaths. H while cycling
+  holds the *section*; otherwise H holds the page. Keying a page, or a coloured
+  key, stops it. While it runs, row 24 is a strip ("CYCLING NEWS  H HOLDS  N
+  STOPS") and the coloured keys are hidden. The weather pages that would only
+  ask for a location are skipped until the set has one. There is no music;
+  the SIGNAL-station soundtrack went with the overnight mode it came from.
+- **The set lands on 190, the welcome,** every time it's switched on (not the
+  last page). `?page=` still opens where it points.
+- **Subpages count from arrival,** so a page always opens on its first screen.
+  The first version followed the broadcaster's clock and opened a twelve-fact
+  page at fact seven.
+- **Moving pages** (`liveMs`: 500 breathe, 410's population count) are
+  re-drawn in place between transmissions, without a reception pass.
 - **Keyboard on a desktop, touch on a phone. No mouse** (2026-09-28). The
   fastext row wasn't read as something to press, so the keys are drawn as
   filled **caps** (`Page.fast`: 9 cells plus a 1-cell gap, dark text, white on
@@ -131,10 +151,6 @@ rebuilt.
   The position lives in memory, and the weather feed is `persist: false`. An
   insecure origin is not a refusal (`locationState: 'insecure'`); see SIGNAL's
   `weather.js` for why that difference matters.
-- **Overnight** (00:00-06:00, 10 idle minutes, settings in `editorial.json`)
-  rotates `OVERNIGHT_PAGES` every 14s and plays the chosen SIGNAL station's
-  tracks through the YouTube IFrame API, which is loaded only then. Page 888
-  shows what's playing. Any page key stops it.
 - **Hidden pages**: 1AF (engineering test card, all colours and mosaics) and
   1FF (FOUR KEYS, a quiz answered with the fastext keys). They're marked
   `hidden` in `pages.js`, so they're kept off the index and out of UP/DOWN. A
@@ -150,33 +166,23 @@ had no `news` key on any date sampled back to 2025. Page 101 reads the
 action API's parse of `Template:In_the_news` instead, and `parseITN` cuts
 off the template's transcluded documentation.
 
-**News is Ceefax-shaped** (2026-09-28, second pass). 101 is a page of
-headlines, each with a story number, and every story has its own page from
-111 to 129. Numbers are decimal only, because a remote can't key 11A. The first
-pass packed first-sentence briefs onto two screens instead, and every story
-lost its ending to fit.
-- **Sources:** "In the news" leads (4-5 items, current by definition). The rest
-  come from Wikipedia's **Current events portal** (feed `events`: today's
-  log in UTC, then yesterday's, each item carrying its log's UTC date).
-  Anything that retells a story already listed is dropped (`sameStory`: two
-  shared names).
-- **Labels** come from the article Wikipedia files the item under: the bold
-  link in "In the news", or the topic heading in the portal
-  (`newsLabel`: "2026 Berlin Marathon" becomes "Berlin Marathon"). This was
-  measured on real items first: most have one. The rest get their section
-  plus the first name in the story ("Disaster: Uttar Pradesh"). A lone
-  adjective of place ("Himalayan") is skipped (`namePhrase`), after the first
-  cut produced two identical "Disaster" labels and one "Disaster: Himalayan".
-- **Order within a day** is politics, world, science, business, health, arts,
-  crime, sport, disaster, conflict, so the page doesn't open on three
-  airstrikes because Wikipedia files conflicts first.
-- **Dates are the viewer's, not Wikipedia's.** At 20:00 in New York,
-  Wikipedia's "yesterday" is still the viewer's today, so each log's date is
-  compared with the local date (`dayLabel`). A day heading opens each day's
-  run of headlines, and a heading stranded at the foot of a screen moves to
-  the next one.
-- **Story pages** give the whole text, a date or section line, and "MORE
-  HEADLINES" in the space left over. Green goes to the next story.
+**News is short bits.** 101 is two screens of briefs: "In the news" first,
+then Wikipedia's **Current events portal** (feed `events`: today's log in UTC,
+then yesterday's), each item cut to its first sentence, anything retelling a
+listed story dropped (`sameStory`), and politics before conflicts within a
+day. `fillPages` packs exactly two screens. A second pass (a headline index
+plus a page per story, 111-129) was built and removed the same day as "too
+much": see the brief at the top.
+
+**Money has no crypto and no stock indices.** Crypto was a choice. For
+indices, no source serves them to a browser without a key. Currencies are the
+ECB's daily reference rates via Frankfurter, as a short series so each rate
+carries the previous working day for its ▲▼. Metals are gold-api.com. "The
+world" is the World Bank's five world figures in one request, with the
+population grown to this second from its latest mid-year figure. **Pause** is
+local or editorial: a quote API that browsers can use didn't exist
+(ZenQuotes has no CORS), so the thoughts live in `editorial.json`, editable in
+the dashboard.
 
 `tests/fixtures/` are real captures (see its README). A fake built from a spec
 proves only that you read your own assumption. That's SIGNAL's STATION BREAK
@@ -225,15 +231,14 @@ installed**. Their comments say how.
 
 `tests/harness.mjs` boots the real `program.js` against a real `Term` and font
 on a fake clock (`h.advance`, `h.settle` for anything waiting on a promise),
-with fixture-backed `fetch`, a fake YouTube player, and SIGNAL's roster from
-`tests/fixtures/signal-stations.json`. `h.row(y)` reads the grid (bitmap cells,
+with fixture-backed `fetch`. `h.row(y)` reads the grid (bitmap cells,
 including double-height text, read as `#`), and `h.page()` reads the page as
 sent. `tests/keys.test.mjs` presses every entry in `KEYS` and fails if the
 screen doesn't change.
 
 **Mutate to check a test can fail.** Every behaviour above was broken on purpose
 once (instant arrival, a garbled header, listed secrets, a stored position, no
-overnight auto-start, stale data shown as fresh), and the right tests went red.
+stale data shown as fresh), and the right tests went red.
 The first mutation script counted nothing, because Node's default reporter isn't
 TAP here. Use `--test-reporter=tap` when parsing output.
 

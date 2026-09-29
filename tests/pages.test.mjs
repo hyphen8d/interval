@@ -4,7 +4,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import * as F from '../feeds.js'
-import { PAGES, pageDef, pageOrder, stationPages, INDEX, MAGAZINES } from '../pages.js'
+import { PAGES, pageDef, pageOrder, INDEX, MAGAZINES, SECTIONS } from '../pages.js'
+import { fixtureData } from '../tools/lib/fixture-ctx.mjs'
 import { KEYS } from '../constants.js'
 import { validPage } from '../carousel.js'
 import { COLS } from '../teletext.js'
@@ -13,19 +14,13 @@ const fx = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta
 const editorial = JSON.parse(readFileSync(new URL('../editorial.json', import.meta.url), 'utf8'))
 const NOW = new Date(2026, 8, 28, 20, 0).getTime()
 
-function allData() {
-  return {
-    itn: F.parseITN(fx('wiki-itn.json')), otd: F.parseOnThisDay(fx('wiki-onthisday.json')),
-    featured: F.parseFeatured(fx('wiki-featured.json')), quakes: F.parseQuakes(fx('usgs-4.5-day.json')),
-    hn: { stories: Array(10).fill(F.parseHnItem(fx('hn-item.json'))) }, kp: F.parseKp(fx('swpc-kp.json')),
-    weather: F.parseForecast(fx('open-meteo.json')), signal: F.parseSignalRoster(fx('signal-stations.json')),
-  }
-}
+const DATA = await fixtureData()
+const allData = () => ({ ...DATA })
 function ctxWith(data = allData(), env = {}, { errors = {}, at = NOW - 60000 } = {}) {
   return {
     entry: (id) => data[id] ? { data: data[id], at } : errors[id] ? { data: null, error: errors[id], loading: false } : null,
     now: NOW, date: new Date(NOW), editorial,
-    env: { locationState: 'granted', overnight: { on: false }, game: { i: 0, score: 0, answered: null, best: 0 }, ...env },
+    env: { locationState: 'granted', game: { i: 0, score: 0, answered: null, best: 0 }, ...env },
   }
 }
 const everyPage = (ctx) => [...pageOrder(ctx), ...[...PAGES.values()].filter(d => d.hidden).map(d => d.num)]
@@ -44,7 +39,7 @@ test('every page renders, fits, and leaves row 0 to the set', () => {
 
 test('every fastext link goes somewhere the set can follow', () => {
   const ctx = ctxWith()
-  const special = /^(overnight|locate|sub:next|signal:[\w-]+|game:(\d|next|reset))$/
+  const special = /^(locate|sub:next|game:(\d|next|reset))$/
   for (const num of everyPage(ctx)) {
     for (const p of pageDef(num, ctx).render(ctx)) {
       for (const f of p.fastext) {
@@ -76,23 +71,10 @@ test('a page waits while its source has not answered, and goes off air when it f
 
 test('stale data is shown with its age, never hidden', () => {
   const old = ctxWith(allData(), {}, { at: NOW - 6 * 3600 * 1000 })
-  const [p] = pageDef('400', old).render(old)
+  const [p] = pageDef('330', old).render(old)
   assert.match(p.lines()[23], /NOT UPDATED SINCE 14:00/)
   const fresh = ctxWith()
-  assert.match(pageDef('400', fresh).render(fresh)[0].lines()[23], /UPDATED 19:59/)
-})
-
-test("SIGNAL's stations get a page each, per band, and the secrets none", () => {
-  const ctx = ctxWith()
-  const pages = stationPages(ctx.entry('signal').data)
-  assert.equal(pages.length, 16)
-  assert.ok(pages.every(p => /^5[12][1-9]$/.test(p.num)))
-  const secrets = fx('signal-stations.json').SECRET_STATIONS.map(s => s.callsign)
-  const listing = pageDef('500', ctx).render(ctx).map(p => p.lines().join('\n')).join('\n')
-  for (const name of secrets) assert.ok(!listing.includes(name), `${name} is not listed`)
-  const [cipher] = pageDef('511', ctx).render(ctx)
-  assert.deepEqual(cipher.fastext[0], ['Tune in', 'signal:cipher'])
-  assert.equal(pageDef('519', ctx), null, 'a number with no station behind it is not carried')
+  assert.match(pageDef('330', fresh).render(fresh)[0].lines()[23], /UPDATED 19:59/)
 })
 
 test('the weather pages ask before they know where you are', () => {
@@ -125,19 +107,12 @@ test('the help page lists every key the set answers', () => {
 test('index.html tells a screen reader about every key too', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
   const about = html.slice(html.indexOf('id="about"'), html.indexOf('id="announce"')).replace(/\s+/g, ' ')
-  const words = { digits: 'page number', updown: 'Up and down', leftright: 'left and right', fastext: 'F1', index: 'I goes', reveal: 'R reveals', hold: 'H holds', size: 'S changes', colour: 'C changes', overnight: 'N turns', mute: 'M mutes', fullscreen: 'F is', cancel: 'Escape', power: 'P switches' }
+  const words = { digits: 'page number', updown: 'Up and down', leftright: 'left and right', fastext: 'F1', index: 'I goes', reveal: 'R reveals', hold: 'H holds', size: 'S changes', colour: 'C changes', cycle: 'N turns cycling', fullscreen: 'F is', cancel: 'Escape', power: 'P switches' }
   for (const k of KEYS) assert.ok(about.includes(words[k.id]), `${k.id} is described`)
 })
 
 test('the magazines cover every first digit a page can have', () => {
   for (let m = 1; m <= 8; m++) assert.ok(MAGAZINES[m], `magazine ${m}`)
-})
-
-test('the subtitles page says what is playing overnight, and nothing otherwise', () => {
-  const on = ctxWith(allData(), { overnight: { on: true, track: { title: 'Teardrop', artist: 'Massive Attack' } } })
-  assert.match(pageDef('888', on).render(on)[0].lines().join('\n'), /Teardrop/)
-  const off = ctxWith()
-  assert.match(pageDef('888', off).render(off)[0].lines().join('\n'), /No subtitles/)
 })
 
 test('rows stay within forty columns everywhere', () => {
@@ -149,53 +124,86 @@ test('rows stay within forty columns everywhere', () => {
   }
 })
 
-test('headline labels come from the article a story is filed under, or its section and first name', async () => {
-  const { newsLabel, namePhrase } = await import('../pages.js')
-  assert.equal(newsLabel('the AFL Grand Final'), 'AFL Grand Final')
-  assert.equal(newsLabel('2026 Berlin Marathon', 'Sports'), 'Berlin Marathon')
-  assert.equal(newsLabel('tilcayo'), 'Tilcayo')
-  assert.equal(newsLabel(null, 'Disasters and accidents', 'Eighty-one people in Uttar Pradesh, India, die.'), 'Disaster: Uttar Pradesh')
-  assert.equal(namePhrase('An avalanche kills two at the Himalayan mountain Nemjung in Nepal.'), 'Nemjung', 'a lone adjective of place is not a name')
-  assert.equal(newsLabel(null, 'Sports', 'all lower case'), 'Sport')
-})
-
-test('101 lists headlines with story numbers; each number is a page telling the story whole', async () => {
-  const { newsStories } = await import('../pages.js')
-  const { fixtureEvents } = await import('../tools/lib/fixture-ctx.mjs')
-  const ctx = ctxWith({ ...allData(), events: fixtureEvents(F) })
-  const stories = newsStories(ctx)
-  assert.ok(stories.length >= 16)
-  assert.ok(stories.every(s => /^1[12]\d$/.test(s.num)), 'decimal numbers only: a remote cannot key 11A')
-  assert.deepEqual(stories.slice(0, 4).map(s => s.top), [true, true, true, true], 'In the news leads')
+test('news is two full screens of short bits: In the news first, then the day briefed', () => {
+  const ctx = ctxWith()
   const subs = pageDef('101', ctx).render(ctx)
-  assert.ok(subs.length <= 2)
-  const index = subs.map(p => p.lines().join('\n')).join('\n')
-  assert.match(index, /AFL Grand Final\s+111/)
-  assert.match(index, /MONDAY 28 SEPTEMBER/)
-  assert.match(index, /YESTERDAY/, "the 27th's log is marked as yesterday")
-  const kyiv = stories.find(s => s.label === 'Kyiv strikes')
-  const [page] = pageDef(kyiv.num, ctx).render(ctx)
-  const text = page.lines().join(' ').replace(/\s+/g, ' ')
-  assert.ok(text.includes('residential building in Kyiv, Ukraine.'), 'the whole story, not a first sentence')
-  assert.match(text, /CONFLICT MONDAY 28 SEPTEMBER/)
-  assert.match(text, /MORE HEADLINES/)
-})
-
-test('headlines put politics before airstrikes within a day', async () => {
-  const { newsStories } = await import('../pages.js')
-  const { fixtureEvents } = await import('../tools/lib/fixture-ctx.mjs')
-  const ctx = ctxWith({ ...allData(), events: fixtureEvents(F) })
-  const order = ['POLITICS', 'WORLD', 'SCIENCE', 'BUSINESS', 'HEALTH', 'ARTS', 'CRIME', 'SPORT', 'DISASTER', 'CONFLICT']
-  for (const day of ['TODAY', 'YESTERDAY']) {
-    const ranks = newsStories(ctx).filter(s => !s.top && s.when === day).map(s => order.indexOf(s.section))
-    assert.ok(ranks.length, day)
-    assert.deepEqual(ranks, [...ranks].sort((a, b) => a - b), `${day} is in section order`)
+  assert.equal(subs.length, 2)
+  const text = subs.map(p => p.lines().join(' ')).join(' ')
+  assert.ok(text.indexOf('Brisbane Lions') < text.indexOf('Polish military'), 'the top stories lead')
+  for (const p of subs) {
+    const used = p.lines().slice(4, 22).filter(Boolean).length
+    assert.ok(used >= 13, `a screen is filled (${used} of 18 rows carry text; the rest are gaps between items)`)
   }
 })
 
+test('a brief is a first sentence; the same story is not told twice; a gap takes a later block', async () => {
+  const { brief, sameStory, fillPages } = await import('../pages.js')
+  assert.equal(brief('Polish jets are scrambled. Individuals are urged to shelter.'), 'Polish jets are scrambled.')
+  assert.ok(brief('x '.repeat(200)).endsWith('...'))
+  assert.ok(sameStory('Hashim Thaci of Kosovo is sentenced', 'Kosovo court sentences Hashim Thaci'))
+  assert.ok(!sameStory('Russian strikes on Kyiv', 'Floods in Nepal and India'))
+  const rows = (h) => ({ height: h, draw() {} })
+  const laid = fillPages([rows(5), rows(5), rows(9), rows(4), rows(6), rows(6), rows(6)], 2)
+  assert.equal(laid.length, 2, 'never more than two')
+  assert.deepEqual(laid[0].map(p => p.block.height), [5, 5, 4])
+  assert.deepEqual(laid[1].map(p => p.block.height), [9, 6])
+})
+
+test('every page the seven sections cycle through exists, and each section is one magazine', () => {
+  const ctx = ctxWith()
+  assert.equal(SECTIONS.length, 7)
+  for (const sec of SECTIONS) {
+    for (const [label, num] of sec.pages) assert.ok(pageDef(num, ctx), `${sec.name}: ${label} ${num}`)
+    assert.equal(new Set(sec.pages.map(([, n]) => n[0])).size, 1, `${sec.name} is one magazine`)
+  }
+})
+
+test('facts, born today and a thought: one bite a screen', async () => {
+  const ctx = ctxWith()
+  const facts = pageDef('102', ctx).render(ctx)
+  assert.equal(facts.length, DATA.dyk.facts.length)
+  assert.match(facts[0].lines().join(' '), /propensity to blow bubbles/)
+  const { pickBirths } = await import('../pages.js')
+  const many = Array.from({ length: 200 }, (_, i) => ({ year: 2000 - i, text: `Person ${i}, someone` }))
+  const picked = pickBirths(many)
+  assert.equal(picked.length, 12)
+  assert.ok(picked.at(-1).year < 1850, 'a spread of eras, not the first twelve')
+  const born = pageDef('201', ctx).render(ctx)
+  assert.ok(born.length > 1)
+  const thought = pageDef('501', ctx).render(ctx)[0].lines().join(' ')
+  assert.ok(editorial.thoughts.some(t => thought.includes(t.text.slice(0, 20))))
+})
+
+test('money: the dollar against the world with the day\'s move, metals per ounce, the world in numbers', async () => {
+  const ctx = ctxWith()
+  const fxPage = pageDef('400', ctx).render(ctx)[0].lines().join('\n')
+  assert.match(fxPage, /EUR\s+Euro\s+0\.8789 ▲ 0\.22%/)
+  assert.match(fxPage, /JPY\s+Yen\s+156\.9 ▼ 0\.45%/)
+  const metals = pageDef('401', ctx).render(ctx)[0]
+  assert.ok(metals.cells.some(r => r.some(c => c.dh === 1)), 'the prices are big')
+  assert.match(metals.lines().join(' '), /OUNCE OF GOLD = 68 OF SILVER/)
+  const { worldPopulationNow } = await import('../pages.js')
+  const a = worldPopulationNow(DATA.world, NOW), b = worldPopulationNow(DATA.world, NOW + 60000)
+  assert.ok(a > 8.2e9 && a < 8.4e9)
+  assert.ok(b > a, 'the count moves')
+})
+
+test('breathe: in four, hold four, out four, hold four -- and the circle follows the breath', async () => {
+  const { breathAt, BREATH_CYCLE_MS } = await import('../pages.js')
+  assert.equal(BREATH_CYCLE_MS, 16000)
+  assert.deepEqual([0, 4000, 8000, 12000].map(t => breathAt(t).word), ['BREATHE IN', 'HOLD', 'BREATHE OUT', 'HOLD'])
+  assert.ok(breathAt(3900).full > 0.9 && breathAt(100).full < 0.1)
+  assert.equal(breathAt(5000).count, 2)
+  const small = pageDef('500', { ...ctxWith(), now: 100 }).render({ ...ctxWith(), now: 100 })[0]
+  const big = pageDef('500', { ...ctxWith(), now: 5000 }).render({ ...ctxWith(), now: 5000 })[0]
+  const lit = (p) => p.cells.flat().filter(c => c.mos > 0).length
+  assert.ok(lit(big) > lit(small) * 3)
+})
+
 test('news still shows the top stories when Current events is down', () => {
-  const ctx = ctxWith(allData(), {}, { errors: { events: 'HTTP 503' } })
+  const data = allData(); delete data.events
+  const ctx = ctxWith(data, {}, { errors: { events: 'HTTP 503' } })
   const subs = pageDef('101', ctx).render(ctx)
   assert.ok(subs.length >= 1)
-  assert.match(subs[0].lines().join(' '), /AFL Grand Final/)
+  assert.match(subs[0].lines().join(' '), /Brisbane Lions/)
 })
