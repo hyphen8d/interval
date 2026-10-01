@@ -14,7 +14,13 @@
 //   subpageMs  how long each subpage stays up before the next (default
 //            carousel.js SUBPAGE_MS, 9s). Longer on pages of running text:
 //            nine seconds is a headline, not a paragraph.
-//   render   (ctx) -> Page[] -- one Page per subpage.
+//   render   (ctx) -> Page[] -- one Page per subpage. Never an empty
+//            list: a source that answered with nothing gets a page that says
+//            so, or the set would search for it forever.
+//   links    true on the pages that print page references a tap should
+//            follow (the index, help, notices). Every other page is drawn
+//            from data, where "S&P 500" or a score of 101 is not a link
+//            (teletext.js pageNumberAt).
 //
 //   liveMs   re-draw the page this often while it is up, for a page that
 //            moves (breathe, the clock, the candle, the gallery, the
@@ -46,7 +52,7 @@ const {
   BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, COLS,
 } = await import(`./teletext.js?v=${V}`)
 const { KEYS, FASTEXT_ALT } = await import(`./constants.js?v=${V}`)
-const { FEEDS, staleAfter, LEAGUES } = await import(`./feeds.js?v=${V}`)
+const { FEEDS, isStale: feedStale, LEAGUES } = await import(`./feeds.js?v=${V}`)
 const { drawLines } = await import(`./markup.js?v=${V}`)
 const Pic = await import(`./pictures.js?v=${V}`)
 
@@ -124,13 +130,39 @@ function when(ms, nowMs) {
  * one that says plainly it is the 14:02 copy. That is check-roster's rule
  * ("a throttled run must never read as a clean one") applied to the viewer.
  */
-export function creditLine(p, ctx, feedId) {
-  const e = ctx.entry(feedId)
-  const label = FEEDS[feedId]?.label ?? feedId.toUpperCase()
-  if (!e || !e.data) { p.text(23, 1, `SOURCE: ${label}`, GREEN); return }
-  const stale = ctx.now - e.at > staleAfter(FEEDS[feedId])
-  if (stale) p.text(23, 1, clip(`${label}  NOT UPDATED SINCE ${when(e.at, ctx.now)}`, 38), RED)
-  else p.text(23, 1, clip(`SOURCE: ${label}   UPDATED ${when(e.at, ctx.now)}`, 38), GREEN)
+export function creditLine(p, ctx, feedIds) {
+  const { text, fg } = creditText(ctx, feedIds)
+  p.text(23, 1, text, fg)
+}
+const CREDIT_MAX = 38
+// feeds.js's rule, so a page and the cache agree: a live scoreboard goes
+// stale on the live period, and a copy dated in the future is stale too.
+const isStale = (ctx, id, e = ctx.entry(id)) => !!(FEEDS[id] && feedStale(FEEDS[id], e, ctx.now))
+/**
+ * The credit line's words, for one feed or several (203 has two). The age is
+ * never what gets cut (2026-10-01): the line was clipped whole to 38, at a
+ * word, so "OPEN-METEO  NOT UPDATED SINCE FRI 14:02" (39) lost its time --
+ * the one part of a stale line that matters. Now the time is fixed and the
+ * label gives way: "SOURCE:" goes first, then the label is clipped. For
+ * several feeds, a stale one wins the line (the oldest, if more than one).
+ */
+export function creditText(ctx, feedIds) {
+  const ids = [].concat(feedIds)
+  const label = (id) => FEEDS[id]?.label ?? id.toUpperCase()
+  const fit = (heads, tail) => {
+    for (const h of heads) if (h.length + tail.length <= CREDIT_MAX) return h + tail
+    return clip(heads[heads.length - 1], CREDIT_MAX - tail.length) + tail
+  }
+  const stale = ids.filter(id => isStale(ctx, id)).sort((a, b) => ctx.entry(a).at - ctx.entry(b).at)[0]
+  if (stale) return { text: fit([label(stale)], ` NOT UPDATED SINCE ${when(ctx.entry(stale).at, ctx.now)}`), fg: RED }
+  const names = [...new Set(ids.map(label))].join(' & ')
+  const ats = ids.map(id => ctx.entry(id)).filter(e => e?.data).map(e => e.at)
+  if (!ats.length) return { text: fit([`SOURCE: ${names}`, names], ''), fg: GREEN }
+  const tail = `  UPDATED ${when(Math.min(...ats), ctx.now)}`
+  // A fresh line can lose its time before its sources: fresh is the
+  // ordinary case, and the colour already says it.
+  const text = [`SOURCE: ${names}${tail}`, `${names}${tail}`, `SOURCE: ${names}`].find(t => t.length <= CREDIT_MAX)
+  return { text: text ?? clip(names, CREDIT_MAX), fg: GREEN }
 }
 
 /** A page whose source has never answered, once the set has given up
@@ -252,7 +284,15 @@ function weatherIcon(code, ms = 0) {
 // ---------------------------------------------------------------------------
 
 const defs = []
-const page = (num, title, def) => { defs.push({ num, title, feeds: [], ...def }); return num }
+const page = (num, title, def) => {
+  const d = { num, title, feeds: [], ...def }
+  if (!d.links) {
+    const draw = d.render
+    d.render = (ctx) => { const out = draw(ctx); for (const p of out || []) p.links = false; return out }
+  }
+  defs.push(d)
+  return num
+}
 const LONG_DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
 const MONTH_NAMES = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER']
 /** "MONDAY, SEPTEMBER 28": US order (2026-09-28; "MONDAY 28 SEPTEMBER" read
@@ -275,14 +315,19 @@ export function nowItems(ctx) {
     const pct = (dow.value / dow.prev - 1) * 100
     items.push([`DOW ${pct >= 0 ? '▲' : '▼'}${Math.abs(pct).toFixed(1)}%`, pct >= 0 ? GREEN : RED])
   }
-  const here = ctx.entry('weather')?.data
-  const cities = ctx.entry('cities')?.data
+  // A stale copy is no news of NOW (2026-10-01): a game cached "in
+  // progress" last night read as live in the morning. Temperatures and
+  // scores are used only while their feed is fresh, by the credit line's
+  // rule (feeds.js isStale).
+  const fresh = (id) => (isStale(ctx, id) ? null : ctx.entry(id)?.data)
+  const here = fresh('weather')
+  const cities = fresh('cities')
   if (here?.current && Number.isFinite(here.current.temp)) items.push([`HERE ${here.current.temp}${here.units || 'F'}`, CYAN])
   else {
     const ny = cities?.cities?.find(c => c.name === 'NEW YORK')
     if (ny && Number.isFinite(ny.temp)) items.push([`NYC ${ny.temp}${cities.units || 'F'}`, CYAN])
   }
-  const games = LEAGUES.flatMap(([key]) => (ctx.entry(`sport_${key}`)?.data?.games || []))
+  const games = LEAGUES.flatMap(([key]) => (fresh(`sport_${key}`)?.games || []))
   const g = games.find(x => x.state === 'in') ||
     games.filter(x => x.state === 'post').sort((a, b) => (b.date || 0) - (a.date || 0))[0]
   if (g) items.push([`${g.away.abbr} ${g.away.score} ${g.home.abbr} ${g.home.score}`, g.state === 'in' ? GREEN : WHITE])
@@ -290,6 +335,7 @@ export function nowItems(ctx) {
 }
 
 page('100', 'Index', {
+  links: true,
   feeds: ['markets', 'cities', ...LEAGUES.map(([key]) => `sport_${key}`)],
   // Redrawn in place so the NOW line keeps up; the table itself never moves.
   liveMs: 15000,
@@ -409,10 +455,14 @@ page('101', 'News headlines', {
       // news, one that trails off as a fault.
       const whole = briefs.filter(t => !t.endsWith('...')), cut = briefs.filter(t => t.endsWith('...'))
       const blocks = [...itn.stories.map(brief), ...whole, ...cut].map(t => textBlock(null, t))
-      const laid = fillPages(blocks, 2)
+      // Nothing to brief (both sources answered, with nothing in them) is
+      // still a page: an empty list would leave the set searching forever.
+      const laid = blocks.length ? fillPages(blocks, 2) : [[]]
       return laid.map((placed, i) => {
         const p = new Page()
-        masthead(p, '101', 'NEWS', { sub: i, subs: laid.length, right: i ? 'HEADLINES' : longDate(ctx.now).split(' ')[0] })
+        // The day alone: longDate's first word was "MONDAY," with its comma.
+        masthead(p, '101', 'NEWS', { sub: i, subs: laid.length, right: i ? 'HEADLINES' : LONG_DAYS[new Date(ctx.now).getDay()] })
+        if (!blocks.length) p.wrap(BODY_TOP, 1, 'No stories in the news feeds just now. They will be here when there are.', 38, CYAN)
         for (const { block, row } of placed) block.draw(p, row)
         creditLine(p, ctx, 'itn')
         p.fast([['FACTS', '102'], ['TODAY', '200'], ['WEATHER', '300'], ['INDEX', '100']])
@@ -430,10 +480,14 @@ page('101', 'News headlines', {
  * films between 2008 and 2010..."), and it cannot be steered to a subject.
  */
 export const FACTS_PER_DAY = 8
+/** Days since 1970 by the viewer's own calendar: a count that goes on from
+ *  December 31 to January 1. The day of the year it replaced started again
+ *  at 1, and with 32 facts (eight a day) or 14 thoughts, both of which divide
+ *  364, New Year's Day showed New Year's Eve's again (2026-10-01). */
+export const dayNumber = (ms) => { const d = new Date(ms); return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5) }
 export function factsFor(list, nowMs) {
   if (!list?.length) return []
-  const d = new Date(nowMs)
-  const day = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 0)) / 864e5)
+  const day = dayNumber(nowMs)
   const n = Math.min(FACTS_PER_DAY, list.length)
   return Array.from({ length: n }, (_, i) => list[(day * n + i) % list.length])
 }
@@ -455,6 +509,7 @@ page('102', 'Did you know', {
 })
 
 page('190', 'Welcome', {
+  links: true,
   render(ctx) {
     const n = (ctx.editorial.notices || []).find(x => String(x.page) === '190') || { page: '190', title: 'WELCOME', lines: [] }
     return [noticePage({ ...n, page: '190' })]
@@ -472,6 +527,7 @@ function noticePage(n) {
 }
 
 page('199', 'Help: using the set', {
+  links: true,
   render(ctx) {
     const p = new Page()
     masthead(p, '199', 'HELP', { right: 'HOW TO USE' })
@@ -490,6 +546,7 @@ page('199', 'Help: using the set', {
 })
 
 page('1AF', 'Engineering test page', {
+  links: true,
   hidden: true,
   render() {
     const p = new Page()
@@ -517,7 +574,7 @@ page('1FF', 'Four keys: a hidden game', {
     const qs = ctx.editorial.fourkeys || []
     const g = ctx.env.game || { i: 0, score: 0, answered: null, best: 0 }
     const p = new Page()
-    masthead(p, '6FF', 'FOUR KEYS', { right: `SCORE ${g.score}` })
+    masthead(p, '1FF', 'FOUR KEYS', { right: `SCORE ${g.score}` })
     if (!qs.length) { p.wrap(BODY_TOP, 1, 'No questions loaded.', 38, CYAN); return [p] }
     const q = qs[g.i % qs.length]
     let r = p.wrap(BODY_TOP, 1, q.q, 38, WHITE)
@@ -548,10 +605,11 @@ page('200', 'On this day', {
     return gate(ctx, '200', 'ON THIS DAY', ['otd'], ({ otd }) => {
       // Six, spread across the day's picks: eighteen screens of history is a
       // lecture, and this is a glance (2026-09-28).
-      const pool = otd.selected.length ? otd.selected : otd.events
-      const picks = pickEvenly(pool, 6)
+      const pool = otd.selected?.length ? otd.selected : (otd.events || [])
       // "28 SEP": the masthead's small print has eleven columns.
       const date = ctx.date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }).toUpperCase()
+      if (!pool.length) return listPage('200', 'ON THIS DAY', [], ctx, { feed: 'otd', right: date, fast: [['BORN', '201'], ['NEWS', '101'], ['WEATHER', '300'], ['INDEX', '100']], empty: 'Nothing is listed for this day yet.' })
+      const picks = pickEvenly(pool, 6)
       return picks.map((e, i) => {
         const p = new Page()
         masthead(p, '200', 'ON THIS DAY', { sub: i, subs: picks.length, right: date })
@@ -582,6 +640,7 @@ page('201', 'Born today', {
   subpageMs: 10000,
   render(ctx) {
     return gate(ctx, '201', 'BORN TODAY', ['otd'], ({ otd }) => {
+      if (!otd.births?.length) return listPage('201', 'BORN TODAY', [], ctx, { feed: 'otd', right: 'TODAY', fast: [['TODAY', '200'], ['NEWS', '101'], ['WEATHER', '300'], ['INDEX', '100']], empty: 'Nobody is listed as born on this day yet.' })
       const picks = pickBirths(otd.births).sort((a, b) => (a.year ?? 0) - (b.year ?? 0))
       return picks.map((e, i) => {
         const p = new Page()
@@ -612,6 +671,10 @@ export function sunInfo(rise, set, nowMs) {
   const until = now < a ? `  SUNRISE IN ${span((a - now) * 60000)}` : now < b ? `  SUNSET IN ${span((b - now) * 60000)}` : '  THE SUN IS DOWN'
   return len + until
 }
+
+/** "61F", or "--" for a reading the forecast did not carry: the parsers
+ *  round what they are given, and Math.round(undefined) printed "NaNF". */
+const temp = (t, units) => (Number.isFinite(t) ? `${t}${units}` : '--')
 
 /** Weather pages share a front door: no location yet, and why. */
 function weatherGate(num, title, ctx, fn) {
@@ -647,14 +710,14 @@ page('300', 'Weather: today', {
       masthead(p, '300', 'WEATHER', { right: 'TODAY' })
       p.art(BODY_TOP, 1, weatherIcon(w.current.code, ctx.now), { W: WHITE, Y: YELLOW, C: CYAN })
       p.text(BODY_TOP, 14, 'NOW', YELLOW)
-      p.double(BODY_TOP + 1, 14, `${w.current.temp}${w.units}`, WHITE)
+      p.double(BODY_TOP + 1, 14, temp(w.current.temp, w.units), WHITE)
       p.text(BODY_TOP + 1, 22, clip(wmoWords(w.current.code)[1], 17), CYAN)
       if (w.current.wind !== null) p.text(BODY_TOP + 3, 14, `WIND ${compass(w.current.windDir)} ${w.current.wind} ${w.windUnit}`, GREEN)
       let r = BODY_TOP + 6
       for (const part of w.parts) {
         p.text(r, 1, part.name, YELLOW)
         if (part.temp !== null) {
-          p.text(r, 12, `${part.temp}${w.units}`.padStart(4), WHITE)
+          p.text(r, 12, temp(part.temp, w.units).padStart(4), WHITE)
           p.text(r, 18, clip(wmoWords(part.code)[1], 14), CYAN)
           if (part.pop !== null) p.text(r, 34, `${part.pop}%`.padStart(4), part.pop >= 50 ? CYAN : GREEN)
         } else p.text(r, 12, 'PAST', MAGENTA)
@@ -663,7 +726,7 @@ page('300', 'Weather: today', {
       const today = w.days[0]
       if (today) {
         p.text(r, 1, `SUNRISE ${today.sunrise ?? '--:--'}   SUNSET ${today.sunset ?? '--:--'}`, WHITE)
-        p.text(r + 1, 1, `HIGH ${today.hi}${w.units}   LOW ${today.lo}${w.units}`, YELLOW)
+        p.text(r + 1, 1, `HIGH ${temp(today.hi, w.units)}   LOW ${temp(today.lo, w.units)}`, YELLOW)
         // How long the day is, and how long is left of it (2026-09-28).
         const sun = sunInfo(today.sunrise, today.sunset, ctx.now)
         if (sun) p.text(r + 2, 1, sun, CYAN)
@@ -688,12 +751,14 @@ page('301', 'Weather: five days', {
         const r = BODY_TOP + 2 + i * 3
         const day = new Date(`${d.date}T12:00`)
         p.text(r, 1, i === 0 ? 'TDY' : DAYS[day.getDay()], YELLOW)
-        p.text(r, 6, `${d.hi}${w.units}`, YELLOW)
-        p.text(r, 12, `${d.lo}${w.units}`, CYAN)
+        p.text(r, 6, temp(d.hi, w.units), YELLOW)
+        p.text(r, 12, temp(d.lo, w.units), CYAN)
         p.text(r, 17, clip(wmoWords(d.code)[1], 16), WHITE)
         if (d.pop !== null) p.text(r, 34, `${d.pop}%`.padStart(4), d.pop >= 50 ? CYAN : GREEN)
-        // A bar from the low to the high on a shared scale.
-        const lo = Math.min(...w.days.map(x => x.lo)), hi = Math.max(...w.days.map(x => x.hi))
+        // A bar from the low to the high on a shared scale; none for a day
+        // missing either.
+        if (!Number.isFinite(d.lo) || !Number.isFinite(d.hi)) return
+        const lo = Math.min(...w.days.map(x => x.lo).filter(Number.isFinite)), hi = Math.max(...w.days.map(x => x.hi).filter(Number.isFinite))
         const span = Math.max(1, hi - lo)
         const a = Math.round((d.lo - lo) / span * 60), b = Math.round((d.hi - lo) / span * 60)
         const start = Math.floor(a / 2)
@@ -721,12 +786,12 @@ page('302', 'Weather: US cities', {
         const hot = cities.units === 'F' ? c.temp >= 85 : c.temp >= 29
         const cold = cities.units === 'F' ? c.temp <= 40 : c.temp <= 4
         p.text(r, 1, c.name, i % 2 ? WHITE : YELLOW)
-        p.text(r, 15, `${c.temp}${cities.units}`.padStart(4), hot ? RED : cold ? CYAN : WHITE)
+        p.text(r, 15, temp(c.temp, cities.units).padStart(4), hot ? RED : cold ? CYAN : WHITE)
         p.text(r, 22, clip(wmoWords(c.code)[2], 5), GREEN)
         // Where it is raining, snowing or storming, the row shows it.
         const kind = Pic.weatherKind(c.code)
         if (kind) for (const k of [0, 1]) p.mosaic(r, 27 + k, Pic.weatherCell(kind, ctx.now, k), kind === 'snow' ? WHITE : kind === 'storm' ? YELLOW : CYAN)
-        p.text(r, 30, `${c.hi}/${c.lo}`.padStart(8), WHITE)
+        p.text(r, 30, `${temp(c.hi, '')}/${temp(c.lo, '')}`.padStart(8), WHITE)
       })
       creditLine(p, ctx, 'cities')
       p.fast([['LOCAL', '300'], ['5-DAY', '301'], ['NEWS', '101'], ['INDEX', '100']])
@@ -794,44 +859,71 @@ export function weekendIn(nowMs) {
  * public holiday, the next rocket launch, with its ascent drawn beside it
  * (pictures.js launchPixels; the rocket-on-a-pad it replaced read as
  * something else). A page to hold on a Friday afternoon.
+ *
+ * 2026-10-01: the two sources were read straight, outside the rules every
+ * other page keeps, so a failed source said "WAITING FOR THE SCHEDULE"
+ * forever and a stale one showed as current. Now the page waits while
+ * neither has answered and is off air when both have failed with nothing
+ * cached, as gate() does. In between, the weekend (which needs no source)
+ * carries the page, a section whose source failed says so with the reason,
+ * and the credit line shows the stale one's age in red.
  */
 page('203', 'Coming up', {
   feeds: ['holidays', 'launches'],
   liveMs: 1000,
   render(ctx) {
+    const ids = ['holidays', 'launches']
+    const entries = ids.map(id => ctx.entry(id))
+    if (entries.every(e => !e?.data)) {
+      if (entries.every(e => e?.error && !e.loading)) return [offAir('203', 'COMING UP', ids, ctx)]
+      if (!entries.some(e => e?.error && !e.loading)) return null
+    }
+    // What a section says when its source has nothing to give.
+    const missing = (e, waiting) => (e?.error && !e.loading ? { text: clip(`OFF AIR: ${e.error}`, 38), fg: RED } : { text: waiting, fg: CYAN })
     const p = new Page()
     masthead(p, '203', 'COMING UP', { right: 'COUNTDOWNS' })
     const wk = weekendIn(ctx.now)
     p.text(BODY_TOP, 1, 'THE WEEKEND', YELLOW)
     if (wk === null) p.double(BODY_TOP + 1, 1, "IT'S THE WEEKEND", GREEN)
     else p.double(BODY_TOP + 1, 1, countdown(wk), WHITE)
-    const hol = (ctx.entry('holidays')?.data?.holidays || []).find(h => Date.parse(`${h.date}T23:59`) > ctx.now)
+    const [hols, launches] = entries
+    const hol = (hols?.data?.holidays || []).find(h => h?.date && Date.parse(`${h.date}T23:59`) > ctx.now)
     p.text(BODY_TOP + 4, 1, 'NEXT HOLIDAY', YELLOW)
     if (hol) {
       const days = Math.max(0, Math.ceil((new Date(`${hol.date}T00:00`).getTime() - ctx.now) / 864e5))
-      p.text(BODY_TOP + 5, 1, clip(hol.names.join(' / '), 38), WHITE)
+      p.text(BODY_TOP + 5, 1, clip((hol.names || []).join(' / ') || 'A PUBLIC HOLIDAY', 38), WHITE)
       p.text(BODY_TOP + 6, 1, `${shortDay(hol.date)}  ${days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `IN ${days} DAYS`}`, CYAN)
-    } else p.text(BODY_TOP + 5, 1, 'WAITING FOR THE CALENDAR', CYAN)
-    const next = (ctx.entry('launches')?.data?.launches || []).find(l => l.net > ctx.now - 60000)
+    } else {
+      const m = hols?.data ? { text: 'NONE ON THE CALENDAR', fg: CYAN } : missing(hols, 'WAITING FOR THE CALENDAR')
+      p.text(BODY_TOP + 5, 1, m.text, m.fg)
+    }
+    const next = (launches?.data?.launches || []).find(l => Number.isFinite(l?.net) && l.net > ctx.now - 60000)
     p.text(BODY_TOP + 9, 1, 'NEXT ROCKET LAUNCH', YELLOW)
     if (next) {
       const t = next.net - ctx.now
       p.double(BODY_TOP + 10, 1, t <= 0 ? 'LIFTOFF' : `T-${countdown(t)}`, t < 3600e3 ? GREEN : WHITE)
-      p.text(BODY_TOP + 12, 1, clip(next.mission || next.vehicle, 30), WHITE)
-      p.text(BODY_TOP + 13, 1, clip(next.vehicle, 30), CYAN)
-      p.text(BODY_TOP + 14, 1, clip(`${next.provider}, ${next.where}`, 30), CYAN)
-      if (next.status && next.status !== 'Go') p.text(BODY_TOP + 15, 1, `STATUS: ${next.status.toUpperCase()}`, MAGENTA)
+      p.text(BODY_TOP + 12, 1, clip(next.mission || next.vehicle || '', 30), WHITE)
+      if (next.vehicle) p.text(BODY_TOP + 13, 1, clip(next.vehicle, 30), CYAN)
+      // Either can be missing; the first cut printed "undefined, undefined".
+      const from = [next.provider, next.where].filter(Boolean).join(', ')
+      if (from) p.text(BODY_TOP + 14, 1, clip(from, 30), CYAN)
+      if (next.status && next.status !== 'Go') p.text(BODY_TOP + 15, 1, `STATUS: ${String(next.status).toUpperCase()}`, MAGENTA)
       p.art(BODY_TOP + 9, 31, Pic.launchPixels(ctx.now, t < 60000), { G: GREEN, W: WHITE, C: CYAN, Y: YELLOW, R: RED })
-    } else p.text(BODY_TOP + 10, 1, 'WAITING FOR THE SCHEDULE', CYAN)
+    } else {
+      const m = launches?.data ? { text: 'NO LAUNCHES SCHEDULED', fg: CYAN } : missing(launches, 'WAITING FOR THE SCHEDULE')
+      p.text(BODY_TOP + 10, 1, m.text, m.fg)
+    }
+    creditLine(p, ctx, ids)
     p.fast([['CLOCK', '202'], ['SPORT', '601'], ['NEWS', '101'], ['INDEX', '100']])
     return [p]
   },
 })
 
 // ---------------------------------------------------------------------------
-// Money: the world's numbers at a glance. No crypto (2026-09-28, by choice),
-// and no stock indices: nothing that serves them is open to a browser
-// without a key, and this site has no server to hide one behind.
+// Money: the world's numbers at a glance. No crypto (2026-09-28, by choice).
+// The stock indices are here, but not fetched: nothing serves them to a
+// browser without a key, so the deploy workflow builds markets.json from
+// FRED's closes and the set reads that like any feed (page 401).
 // ---------------------------------------------------------------------------
 
 /** ▲ or ▼ and the day's change in percent, or blank when unchanged. */
@@ -844,13 +936,22 @@ function move(now, prev) {
 
 /** 51,481.51 -> "51,481.51"; the index levels want their thousands. */
 const grouped = (x, dp = 2) => x.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })
-const shortDay = (iso) => { const d = new Date(`${iso}T12:00`); return `${MONTH_NAMES[d.getMonth()].slice(0, 3)} ${d.getDate()}` }
+/** "SEP 28" from "2026-09-28"; "--" for anything else. A series row built
+ *  without its date threw here and took the whole page with it. */
+const isoDay = (iso) => /^\d{4}-\d\d-\d\d/.test(String(iso ?? ''))
+const shortDay = (iso) => {
+  if (!isoDay(iso)) return '--'
+  const d = new Date(`${String(iso).slice(0, 10)}T12:00`)
+  return `${MONTH_NAMES[d.getMonth()].slice(0, 3)} ${d.getDate()}`
+}
 
 /**
  * A bar chart in one row: two bars a cell, each 0-3 blocks high, scaled from
  * the lowest value to the highest. Ten closes make five cells.
  */
 export function sparkline(p, r, c, values, ink) {
+  values = values.filter(Number.isFinite)
+  if (values.length < 2) return
   const lo = Math.min(...values), hi = Math.max(...values), span = hi - lo || 1
   const h = values.map(v => 1 + Math.round((v - lo) / span * 2))
   const LEFT = [0, 16, 20, 21], RIGHT = [0, 32, 40, 42]
@@ -873,8 +974,11 @@ page('401', 'World markets', {
       let r = BODY_TOP
       for (const s of markets.series) {
         if (r > 19) break
+        // A malformed row is skipped, not thrown on (the parser checks the
+        // file, but it is built elsewhere and cached across builds).
+        if (!s || !Number.isFinite(s.value)) continue
         const value = s.kind === 'percent' ? `${s.value.toFixed(2)}%` : s.kind === 'dollars' ? `$${s.value.toFixed(2)}` : grouped(s.value, s.kind === 'level' ? 2 : 2)
-        p.text(r, 1, clip(s.name, 16), YELLOW)
+        p.text(r, 1, clip(s.name || '', 16), YELLOW)
         p.text(r, 18, value.padStart(10), WHITE)
         const m = move(s.value, s.prev)
         if (m) { const c = m.up === null ? WHITE : m.up ? GREEN : RED; p.text(r, 29, m.mark, c); p.text(r, 30, m.pct.padStart(6), c) }
@@ -884,8 +988,11 @@ page('401', 'World markets', {
       }
       // The file is rebuilt a few times each weekday; one that has not been
       // rebuilt in days means the workflow has stopped, and the page says so.
-      const age = markets.at ? ctx.now - Date.parse(markets.at) : 0
-      if (age > 3 * 864e5) p.text(21, 1, clip(`PRICES NOT REFRESHED SINCE ${shortDay(markets.at.slice(0, 10))}`, 38), RED)
+      // A file with no build time is not a fresh one (2026-10-01): it was
+      // taken as age 0 and called current. Unknown is said in red.
+      const built = Date.parse(markets.at ?? '')
+      if (!Number.isFinite(built)) p.text(21, 1, 'NO BUILD TIME: THESE MAY BE OLD PRICES', RED)
+      else if (ctx.now - built > 3 * 864e5) p.text(21, 1, clip(`PRICES NOT REFRESHED SINCE ${shortDay(markets.at)}`, 38), RED)
       else p.text(21, 1, 'DAILY CLOSES, UPDATED EACH WEEKDAY', GREEN)
       creditLine(p, ctx, 'markets')
       p.fast([['WEATHER', '302'], ['NEWS', '101'], ['CLOCK', '202'], ['INDEX', '100']])
@@ -908,13 +1015,14 @@ page('402', 'Your money', {
       masthead(p, '402', 'YOUR MONEY', { right: 'HOUSEHOLD' })
       let r = BODY_TOP
       for (const s of markets.household || []) {
+        if (!s || !Number.isFinite(s.value)) continue
         const value = s.kind === 'gallon' ? `$${s.value.toFixed(2)}` : `${s.value.toFixed(s.kind === 'yoy' ? 1 : 2)}%`
-        p.text(r, 1, s.name, YELLOW)
+        p.text(r, 1, clip(s.name || '', 38), YELLOW)
         p.double(r + 1, 1, value, WHITE)
         const m = move(s.value, s.prev)
         // Up is bad news for every one of these, so up is red.
         if (m) { const c = m.up === null ? WHITE : m.up ? RED : GREEN; p.text(r + 1, 14, m.mark, c); p.text(r + 1, 16, s.kind === 'gallon' ? `${(s.value - s.prev) >= 0 ? '+' : '-'}$${Math.abs(s.value - s.prev).toFixed(2)}` : `${(s.value - s.prev) >= 0 ? '+' : '-'}${Math.abs(s.value - s.prev).toFixed(2)}`, c) }
-        const when = s.kind === 'yoy' || s.id === 'UNRATE' ? `${MONTH_NAMES[+s.date.slice(5, 7) - 1].slice(0, 3)} ${s.date.slice(0, 4)}` : shortDay(s.date)
+        const when = !isoDay(s.date) ? '--' : s.kind === 'yoy' || s.id === 'UNRATE' ? `${MONTH_NAMES[+s.date.slice(5, 7) - 1].slice(0, 3)} ${s.date.slice(0, 4)}` : shortDay(s.date)
         p.text(r + 1, 30, when.padStart(9), CYAN)
         if (s.history?.length > 1) sparkline(p, r + 2, 30, s.history, s.value > s.history[0] ? RED : GREEN)
         r += 3
@@ -971,7 +1079,9 @@ for (const [key, name, , num] of LEAGUES) {
             if (g.state !== 'pre') p.text(r, 16, String(g.home.score).padStart(3), post && g.home.winner ? YELLOW : WHITE)
             p.text(r, 22, clip(st.text, 17), st.fg)
           })
-          if (games.some(g => g.state === 'in')) p.text(21, 1, 'LIVE: SCORES UPDATE EVERY MINUTE', GREEN)
+          // Row 22, the spare one (2026-10-01): on row 21 the line was written
+          // over the sixteenth game whenever a game was on.
+          if (games.some(g => g.state === 'in')) p.text(22, 1, 'LIVE: SCORES UPDATE EVERY MINUTE', GREEN)
           creditLine(p, ctx, `sport_${key}`)
           const i2 = LEAGUES.findIndex(l => l[0] === key)
           p.fast([['NEXT', LEAGUES[(i2 + 1) % LEAGUES.length][3]], ['NEWS', '101'], ['WEATHER', '302'], ['INDEX', '100']])
@@ -1033,12 +1143,21 @@ page('500', 'Breathe', {
   },
 })
 
+/** Where the thought starts, and the candle under it: the thought and its
+ *  "by" line have to end above the candle's top row. */
+export const THOUGHT_TOP = BODY_TOP + 1
+export const CANDLE_ROW = 11
+/** The rows a thought takes on 501, from THOUGHT_TOP: the quote wrapped as
+ *  it is drawn, then a blank row and the "by" line if it has one. The lint
+ *  holds every thought to the rows above the candle (2026-10-01): it used to
+ *  hold them to 240 characters, which at 36 a line is seven lines -- two
+ *  more than fit, so a long thought would have run into the flame. */
+export const thoughtRows = (t) => wrapText(`"${t?.text ?? ''}"`, 36).length + (t?.by ? 2 : 0)
+
 /** Today's thought: one from the editorial list, the same all day. */
 export function thoughtFor(list, nowMs) {
   if (!list?.length) return null
-  const d = new Date(nowMs)
-  const day = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 0)) / 864e5)
-  return list[day % list.length]
+  return list[dayNumber(nowMs) % list.length]
 }
 page('501', 'A thought', {
   liveMs: 140,
@@ -1048,11 +1167,11 @@ page('501', 'A thought', {
     masthead(p, '501', 'A THOUGHT', { right: 'FOR TODAY' })
     if (!t) { p.wrap(BODY_TOP, 1, 'No thoughts written yet.', 38, CYAN); return [p] }
     const lines = wrapText(`"${t.text}"`, 36)
-    let r = BODY_TOP + 1
+    let r = THOUGHT_TOP
     for (const l of lines) p.text(r++, 2, l, YELLOW)
     if (t.by) p.text(r + 1, 38 - Math.min(36, t.by.length + 2), clip(`- ${t.by}`, 36), CYAN)
     // A candle under it, for the empty half of the page (2026-09-28).
-    p.art(11, 14, Pic.candlePixels(ctx.now), { Y: YELLOW, R: RED, W: WHITE })
+    p.art(CANDLE_ROW, 14, Pic.candlePixels(ctx.now), { Y: YELLOW, R: RED, W: WHITE })
     p.fast([['BREATHE', '500'], ['INDEX', '100'], ['NEWS', '101'], ['GALLERY', '700']])
     return [p]
   },

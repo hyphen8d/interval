@@ -208,3 +208,147 @@ test('a copy saved by another build is shown, and fetched again at once', async 
   await b.ensure('m')
   assert.equal(loads, 0, 'a copy this build saved waits out its refresh as before')
 })
+
+test('a live score that stops updating reads stale after three minutes, not forty-five', async () => {
+  const { FeedCache, FEEDS, staleAfter, isStale } = await import('../feeds.js')
+  let now = 0
+  const cache = new FeedCache({ fetch: null, now: () => now, env: {}, feeds: { s: { ...FEEDS.sport_nfl, load: async () => ({ games: [{ state: 'in', date: 0 }] }) } } })
+  await cache.ensure('s')
+  now = 3 * 60000 + 1
+  assert.equal(cache.status('s'), 'stale', 'live: three missed minutes is stale')
+  const e = cache.get('s')
+  assert.equal(isStale(FEEDS.sport_nfl, e, now), true)
+  assert.equal(staleAfter(FEEDS.sport_nfl, e.data, now), 3 * 60000)
+  assert.equal(staleAfter(FEEDS.sport_nfl), 45 * 60000, 'the one-argument call still answers the resting figure')
+  assert.equal(isStale(FEEDS.sport_nfl, { at: 0, data: { games: [{ state: 'post', date: 0 }] } }, now), false, 'a finished game keeps forty-five')
+})
+
+test('a scoreboard speeds up before kickoff, not fifteen minutes after it', async () => {
+  const { FeedCache, FEEDS, scoreboardLive } = await import('../feeds.js')
+  const kickoff = 60 * 60000
+  let loads = 0, now = kickoff - 30 * 60000
+  const cache = new FeedCache({ fetch: null, now: () => now, env: {}, feeds: { s: { ...FEEDS.sport_nfl, load: async () => { loads++; return { games: [{ state: 'pre', date: kickoff }] } } } } })
+  await cache.ensure('s')
+  now += 61000; await cache.ensure('s')
+  assert.equal(loads, 1, 'half an hour out: the resting rate')
+  now = kickoff - 10 * 60000; await cache.ensure('s')
+  now += 61000; await cache.ensure('s')
+  assert.equal(loads, 3, 'inside the window: every minute')
+  assert.equal(scoreboardLive({ games: [{ state: 'pre', date: kickoff }] }, kickoff + 4 * 60 * 60000), false, 'a game stuck at pre for hours lets go')
+})
+
+test('a fetch that never answers fails after the deadline and backs off', { timeout: 5000 }, async () => {
+  const { FeedCache, backoffMs } = await import('../feeds.js')
+  let now = 0, calls = 0, seen = null
+  const feeds = { x: { refreshMs: 60000, load: (f) => { calls++; f('u'); return new Promise(() => {}) } } }
+  const cache = new FeedCache({ fetch: (u, o) => { seen = o?.signal; return new Promise(() => {}) }, now: () => now, env: {}, feeds, timeoutMs: 20 })
+  await cache.ensure('x')
+  assert.equal(cache.status('x'), 'error')
+  assert.match(cache.get('x').error, /no answer/)
+  assert.ok(seen?.aborted, 'the real fetch was given the signal and it fired')
+  await cache.ensure('x')
+  assert.equal(calls, 1, 'inside the backoff')
+  now += backoffMs(1) + 1
+  await cache.ensure('x')
+  assert.equal(calls, 2, 'and asked again after it')
+})
+
+test("a failure streak is forgotten when the day's key changes", async () => {
+  let calls = 0, ok = false
+  const { cache } = cacheWith({ dated: () => { calls++; if (!ok) throw new Error('HTTP 503'); return 'tuesday' } })
+  for (let i = 0; i < 5; i++) { if (i) clock.t += backoffMs(i) + 1; await cache.ensure('dated') }
+  assert.equal(calls, 5)
+  await cache.ensure('dated')
+  assert.equal(calls, 5, 'still backing off for today')
+  ok = true
+  clock.date = new Date(2026, 8, 29)
+  await cache.ensure('dated')
+  assert.equal(calls, 6, "the new day's key is asked for at once")
+  assert.equal(cache.get('dated').data, 'tuesday')
+  clock.t = 1_000_000
+})
+
+test('a saved copy dated in the future reads stale and is fetched again', async () => {
+  const { FeedCache } = await import('../feeds.js')
+  const store = new Map([['interval:feed:m', JSON.stringify({ key: 'live', data: { v: 'old' }, at: 10 * 60 * 60000, build: 'B' })]])
+  const storage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) }
+  let loads = 0
+  const feeds = { m: { refreshMs: 60 * 60000, load: async () => { loads++; return { v: 'new' } } } }
+  const cache = new FeedCache({ fetch: null, now: () => 1000, env: {}, storage, feeds, build: 'B' })
+  assert.equal(cache.status('m'), 'stale')
+  await cache.ensure('m')
+  assert.equal(loads, 1)
+  assert.equal(cache.status('m'), 'fresh')
+})
+
+test('FRED CSV: an empty value is a day with none, not a close of zero', async () => {
+  const { parseFredCsv, yoyFromCsv } = await import('../tools/fetch-markets.mjs')
+  const r = parseFredCsv('observation_date,NIKKEI225\n2026-09-18,65018.95\n2026-09-21,\n2026-09-22, \n2026-09-24,65513.99\n')
+  assert.deepEqual(r.history, [65018.95, 65513.99])
+  assert.equal(r.prev, 65018.95)
+  const cpi = ['observation_date,CPI', ...Array.from({ length: 24 }, (_, i) => `20${24 + Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, '0')}-01,${i === 23 ? '' : 100 + i}`)]
+  assert.equal(yoyFromCsv(cpi.join('\n')).date, '2025-11-01', 'an empty month is skipped, never divided by')
+  // The captured fixture had the Nikkei's September holidays as zeros.
+  assert.ok(fx('markets.json').series.every(s => s.history.every(v => v > 0)))
+})
+
+test('inflation: matched to the same month a year before, by date, and fetched far enough back', async () => {
+  const { yoyFromCsv, HOUSEHOLD } = await import('../tools/fetch-markets.mjs')
+  // 2025-06 is missing: twelve rows back from 2026-03 would be 2025-02.
+  const rows = ['observation_date,CPI']
+  for (let i = 0; i < 27; i++) {
+    const d = `20${24 + Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, '0')}-01`
+    if (d !== '2025-06-01') rows.push(`${d},${100 + i}`)
+  }
+  const r = yoyFromCsv(rows.join('\n'))
+  assert.equal(r.date, '2026-03-01')
+  assert.ok(Math.abs(r.value - (126 / 114 - 1) * 100) < 1e-9, 'March against March')
+  assert.equal(r.prevDate, '2026-02-01')
+  assert.throws(() => yoyFromCsv(rows.filter(l => !l.startsWith('2025-03')).join('\n')), 'the latest month with no year-earlier reading is refused, not guessed')
+  const cpi = HOUSEHOLD.find(s => s.kind === 'yoy')
+  assert.ok(cpi.days >= 24 * 31, `${cpi.days} days is under 24 months: 22 rows plus a late release need more`)
+})
+
+test('markets build: a failed series is carried from the live copy, each request has a deadline', async () => {
+  const { fetchMarkets, SERIES, HOUSEHOLD } = await import('../tools/fetch-markets.mjs')
+  const previous = fx('markets.json')
+  const signals = []
+  const csv = 'observation_date,X\n2026-09-29,10\n2026-09-30,11\n'
+  const cpi = ['observation_date,CPI', ...Array.from({ length: 26 }, (_, i) => `20${24 + Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, '0')}-01,${100 + i}`)].join('\n')
+  const fetchImpl = async (url, o) => {
+    signals.push(o?.signal)
+    if (/id=(NIKKEI225|CPIAUCSL)&/.test(url)) return { ok: false, status: 503 }
+    return { ok: true, text: async () => (/CPIAUCSL/.test(url) ? cpi : csv) }
+  }
+  const m = await fetchMarkets(fetchImpl, new Date('2026-10-01T13:30:00Z'), { previous })
+  assert.ok(signals.length === SERIES.length + HOUSEHOLD.length && signals.every(s => s instanceof AbortSignal))
+  assert.deepEqual(m.series.map(s => s.id), SERIES.map(s => s.id), 'every row, in order')
+  const nk = m.series.find(s => s.id === 'NIKKEI225')
+  assert.equal(nk.carried, true)
+  assert.equal(nk.date, previous.series.find(s => s.id === 'NIKKEI225').date, 'at its own, older date')
+  assert.ok(m.household.find(s => s.id === 'CPIAUCSL').carried, 'inflation is not dropped from 402')
+  assert.deepEqual(m.carried, ['NIKKEI225', 'CPIAUCSL'])
+  assert.equal(m.failed.length, 2)
+  const bare = await fetchMarkets(fetchImpl, new Date('2026-10-01T13:30:00Z'))
+  assert.ok(!bare.series.some(s => s.id === 'NIKKEI225'), 'with no previous copy there is nothing to carry')
+})
+
+test('health probe: a markets.json with no build time fails, not passes as fresh', async () => {
+  const { probe } = await import('../tools/check-feeds.mjs')
+  const { at, ...noAt } = fx('markets.json')
+  const fetchImpl = async () => ({ ok: true, status: 200, headers: { get: () => '*' }, json: async () => noAt })
+  const r = await probe('markets', FEEDS.markets, { fetchImpl })
+  assert.equal(r.ok, false)
+  assert.match(r.error, /no readable build time/)
+  const fresh = { ...noAt, at: new Date().toISOString() }
+  const ok = await probe('markets', FEEDS.markets, { fetchImpl: async () => ({ ok: true, status: 200, headers: { get: () => '*' }, json: async () => fresh }) })
+  assert.equal(ok.ok, true, ok.error)
+})
+
+test('health record: a removed source is pruned, and the committed file holds only current ones', async () => {
+  const { prune, record } = await import('../tools/check-feeds.mjs')
+  const h = record({ feeds: { hn: { ok: false, strikes: 7 }, itn: { ok: true, strikes: 0 } } }, { id: 'otd', ok: true, checkedAt: 'x' })
+  assert.deepEqual(Object.keys(prune(h, ['itn', 'otd']).feeds).sort(), ['itn', 'otd'])
+  const committed = JSON.parse(readFileSync(new URL('../tools/feed-health.json', import.meta.url), 'utf8'))
+  assert.deepEqual(Object.keys(committed.feeds).filter(id => !(id in FEEDS)), [])
+})

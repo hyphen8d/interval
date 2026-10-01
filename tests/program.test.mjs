@@ -2,7 +2,7 @@
 // tube shows at each step. Driven through tests/harness.mjs on a fake clock.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { boot, BASE_TIME } from './harness.mjs'
+import { boot, BASE_TIME, NEVER } from './harness.mjs'
 import { nextTransmission, MIN_WAIT_MS } from '../carousel.js'
 import { RED } from '../teletext.js'
 import * as Pages from '../pages.js'
@@ -429,5 +429,162 @@ test('402 reads the household numbers out of markets.json, through the parser', 
   assert.ok(h.find('GAS, US AVERAGE'), h.page())
   assert.ok(h.find('INFLATION'))
   assert.ok(!h.find('not in the last build'))
+  h.shutdown()
+})
+
+// ------------------------------------------------------- 2026-10-01 review
+// Each of these failed against the code before the fix it covers.
+
+test('every switch-on lands on 190, not the page the set was switched off on', async () => {
+  const { BOOT_MS } = await import('../program.js')
+  const h = await boot()
+  await h.go('101', 3500)
+  assert.equal(h.program.page, '101')
+  h.key('p'); h.advance(400)
+  assert.ok(h.find('STANDBY'))
+  h.key('p'); await h.settle(BOOT_MS + 2000)
+  assert.equal(h.program.page, '190')
+  assert.ok(h.find('Press N and the set turns its own'))
+  h.shutdown()
+  // A ?page= link opens where it points once; the next switch-on is 190.
+  const h2 = await boot({ query: '?page=302' })
+  assert.equal(h2.program.page, '302')
+  h2.key('p'); h2.advance(400)
+  h2.key('p'); await h2.settle(BOOT_MS + 2000)
+  assert.equal(h2.program.page, '190')
+  h2.shutdown()
+})
+
+test('Escape while the cycle is waiting for its page stops the cycle', async () => {
+  const h = await boot()
+  h.key('n')
+  assert.ok(h.program.want, 'cycling asked for the first news page')
+  h.key('Escape')
+  assert.equal(h.program.want, null)
+  assert.ok(!h.program.cycle.on, 'and the cycle is off, not waiting for nothing')
+  h.advance(50)
+  assert.match(h.row(0), /STOPPED/)
+  h.shutdown()
+})
+
+test('cycling passes over a section with nothing to show, and will not start with nothing at all', async () => {
+  const h = await boot()
+  const sport = Pages.SECTIONS.findIndex(s => s.name === 'SPORT')
+  for (const lg of Object.values(Pages.LEAGUE_PAGES)) {
+    const e = h.program.feeds.entries.get(`sport_${lg}`)
+    if (e) e.data = { games: [] }
+    else h.program.feeds.entries.set(`sport_${lg}`, { data: { games: [] }, at: Date.now() })
+  }
+  assert.deepEqual(h.program.cyclePages(sport), [])
+  // From the last page before SPORT, the next stop is the gallery.
+  const before = Pages.SECTIONS[sport - 1].pages.map(([, n]) => n)
+  h.program.cycle = { on: true, section: sport - 1, index: h.program.cyclePages(sport - 1).length - 1, next: 0, holdSection: false }
+  h.program.cycleTick(h.now)
+  assert.equal(h.program.want, Pages.SECTIONS[sport + 1].pages[0][1], `asked for the gallery, not page ${h.program.want}`)
+  assert.ok(before.length)
+  h.program.stopCycle(); h.program.want = null
+  // Nothing anywhere: N says so and the cycle stays off.
+  h.program.cyclePages = () => []
+  h.key('n')
+  assert.ok(!h.program.cycle.on)
+  assert.equal(h.program.want, null)
+  h.advance(50)
+  assert.match(h.row(0), /NO PAGES/)
+  h.shutdown()
+})
+
+test('cycling moves on from a page whose source never answers', async () => {
+  const { FEED_WAIT_MS } = await import('../program.js')
+  const h = await boot({ feeds: (url) => (url.includes('Template:In_the_news') ? NEVER : undefined) })
+  h.key('n')
+  assert.equal(h.program.want, '101')
+  await h.settle(FEED_WAIT_MS - 2000, 500)
+  assert.equal(h.program.want, '101', 'given its time first')
+  assert.equal(h.program.page, '190')
+  await h.settle(6000, 500)
+  assert.ok(h.program.cycle.on)
+  assert.equal(h.program.page, '102', 'then passed over for the next page')
+  h.shutdown()
+})
+
+test('a page that throws while drawing comes up off air and says why', async () => {
+  const h = await boot()
+  const P = await import(`../pages.js?v=${h.tag}`)
+  P.PAGES.get('102').render = () => { throw new Error('series is not an array') }
+  const err = console.error
+  const logged = []
+  console.error = (...a) => logged.push(a)
+  try { await h.go('102', 3500) } finally { console.error = err }
+  assert.equal(h.program.page, '102', 'it arrives, rather than being searched for forever')
+  assert.ok(h.page().includes('OFF AIR'), h.page())
+  assert.ok(h.page().includes('series is not an array'))
+  assert.equal(logged.length, 1, 'logged once, not on every pass')
+  h.shutdown()
+})
+
+test('a focus session does not run out while the set is off', async () => {
+  const { BOOT_MS } = await import('../program.js')
+  const h = await boot()
+  await h.go('502', 2000)
+  h.key('F1')
+  assert.equal(h.program.focus.state, 'run')
+  h.advance(60000)
+  h.key('p'); h.advance(400)
+  h.advance(30 * 60000)
+  const n = h.announced.length
+  h.key('p'); await h.settle(BOOT_MS + 2000)
+  assert.ok(!h.announced.slice(n).some(s => /Time's up/.test(s)), 'no chime for a session that ended unseen')
+  assert.equal(h.program.focus.state, 'paused')
+  assert.equal(h.program.focus.left, 24 * 60000, "paused with the 24 minutes it had left")
+  h.shutdown()
+})
+
+test('switching back on inside the fade to standby: no standby, no reload', async () => {
+  const { BOOT_MS } = await import('../program.js')
+  const h = await boot()
+  h.deploy('newer')
+  await h.program.checkBuild()
+  h.key('p'); h.advance(100)
+  h.key('p'); h.advance(400)
+  assert.ok(h.program.power)
+  assert.equal(h.reloads.length, 0, 'a set that is on is not reloaded under the viewer')
+  assert.ok(!h.find('STANDBY'))
+  await h.settle(BOOT_MS + 2000)
+  assert.equal(h.program.page, '190')
+  assert.ok(!h.find('STANDBY'))
+  h.shutdown()
+})
+
+test('a quiet start gets its whistle and hum on the first key', async () => {
+  const { WHISTLE_HZ } = await import('../sfx.js')
+  const h = await boot({ query: '?power=on', power: false, audio: true })
+  await h.settle(2000)
+  assert.ok(!h.audioLog.some(e => e.value === WHISTLE_HZ), 'silent until a gesture')
+  h.key('1')
+  assert.ok(h.audioLog.some(e => e.value === WHISTLE_HZ), 'the key is the gesture')
+  h.shutdown()
+})
+
+test('the effects queue drains on the fallback ticker when frames stop', async () => {
+  const h = await boot()
+  let ran = 0
+  h.program.fxAfter(500, () => ran++)
+  h.starve(1000)
+  assert.equal(ran, 1, 'a covered window gets 0fps and still runs its effects')
+  h.shutdown()
+})
+
+test('switching off clears the effects queue; only `always` effects survive', async () => {
+  const h = await boot()
+  const ran = []
+  const obj = { v: 0 }
+  h.program.fxAfter(1000, () => ran.push('plain'))
+  h.program.fxAfter(1000, () => ran.push('always'), true)
+  h.program.fxTween(obj, 'v', 0, 10, 5000)
+  h.advance(100)
+  h.key('p')
+  assert.equal(obj.v, 10, 'a cancelled tween lands where it was going')
+  h.advance(1500)
+  assert.deepEqual(ran, ['always'])
   h.shutdown()
 })

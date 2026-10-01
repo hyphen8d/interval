@@ -10,6 +10,9 @@ export const KEYS = [
   { id: 'leftright', keys: 'LEFT/RIGHT', label: 'STEP THROUGH SUBPAGES' },
   { id: 'fastext', keys: 'F1-F4', label: 'THE FOUR COLOURED LINKS' },
   { id: 'index', keys: 'I', label: 'INDEX, PAGE 100' },
+  // ? was handled from the start and missing here until 2026-10-01, so the
+  // help page never listed the key that opens it.
+  { id: 'help', keys: '?', label: 'HELP, THIS PAGE (199)' },
   { id: 'hold', keys: 'H', label: 'HOLD THE PAGE OR SECTION' },
   { id: 'colour', keys: 'C', label: 'COLOUR / B&W / MONITOR' },
   { id: 'cycle', keys: 'N', label: 'CYCLE THROUGH THE SECTIONS' },

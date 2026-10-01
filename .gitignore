@@ -11,5 +11,19 @@
 tools/feed-watch-state.json
 dist/
 node_modules/
-markets.json
+# The site's markets.json is built by the workflow (or `npm run markets`).
+# Anchored at the root: unanchored, this also ignored the parsers' fixture,
+# tests/fixtures/markets.json, so a fresh clone's tests had nothing to read.
+/markets.json
 _site/
+# Secrets. SHIP stages with `git add -A` and pushes, so a key file dropped
+# in the working tree would be published to the repo (and, if the static
+# allowlist ever let it, to the site). Nothing here needs one; if something
+# ever does, it must not be one of these names in the tree.
+.env
+.env.*
+*.local.json
+*secret*
+service-account*.json
+*.pem
+*.key

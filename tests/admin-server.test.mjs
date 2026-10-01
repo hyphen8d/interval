@@ -6,7 +6,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import http from 'node:http'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -15,9 +15,18 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const admin = await import('../tools/admin-server.mjs')
 
 const MUST_SERVE = ['/', '/index.html', '/main.js', '/program.js', '/pages.js', '/teletext.js', '/editorial.json',
-  '/build.json', '/src/crt.js', '/fonts/ter-u16b.bdf', '/tools/lib/fixture-ctx.mjs']
-const MUST_REFUSE = ['/.gitignore', '/.git/config', '/tests/fixtures/hn-item.json', '/tools/admin-server.mjs',
-  '/tools/feed-health.json', '/tools/../.gitignore', '/src/', '/fonts/.hidden', '/LICENSE', '/node_modules/x.js']
+  '/build.json', '/src/crt.js', '/fonts/ter-u16b.bdf', '/tools/lib/fixture-ctx.mjs', '/LICENSE', '/NOTICE']
+// The secret-shaped names are written into the root for the run (see
+// withDecoys): a 404 for a file that isn't there proves nothing.
+const DECOYS = ['secrets.json', 'config.local.json', 'service-account.json', 'package.json']
+const MUST_REFUSE = ['/.gitignore', '/.git/config', '/tests/fixtures/markets.json', '/tools/admin-server.mjs',
+  '/tools/feed-health.json', '/tools/../.gitignore', '/src/', '/fonts/.hidden', '/node_modules/x.js',
+  ...DECOYS.map(d => `/${d}`)]
+async function withDecoys(fn) {
+  const made = DECOYS.filter(d => !existsSync(path.join(root, d)))
+  for (const d of made) writeFileSync(path.join(root, d), '{"key":"decoy"}\n')
+  try { return await fn() } finally { for (const d of made) rmSync(path.join(root, d), { force: true }) }
+}
 
 function listen(server) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)))
@@ -36,7 +45,7 @@ test('the admin server serves what the app needs and nothing else', async () => 
   const port = await listen(admin.server)
   try {
     for (const p of MUST_SERVE) assert.equal(await get(port, p), 200, `${p} is served`)
-    for (const p of MUST_REFUSE) assert.equal(await get(port, p), 404, `${p} is refused`)
+    await withDecoys(async () => { for (const p of MUST_REFUSE) assert.equal(await get(port, p), 404, `${p} is refused`) })
     assert.equal(await get(port, '/admin'), 200, 'the dashboard itself')
   } finally { admin.server.close() }
 })
@@ -48,6 +57,9 @@ test('servable() refuses any dot-segment, which HTTP alone cannot show', () => {
   assert.equal(admin.servable('src/.secret.js'), false)
   assert.equal(admin.servable('.editorial.json.tmp-123'), false)
   assert.equal(admin.servable('editorial.json'), true)
+  for (const d of DECOYS) assert.equal(admin.servable(d), false, `${d}: root JSON is named, not matched by extension`)
+  assert.equal(admin.servable('LICENSE'), true)
+  assert.equal(admin.servable('NOTICE'), true)
   assert.equal(admin.servable(path.basename(admin.tmpPathFor(path.join(root, 'editorial.json')))), false, 'its own temp files are dot-prefixed')
 })
 
@@ -73,7 +85,7 @@ test('the dev server applies the same allowlist', async () => {
     }
     assert.ok(up, 'dev server came up')
     for (const p of MUST_SERVE) assert.equal(await get(port, p), 200, `dev-server serves ${p}`)
-    for (const p of MUST_REFUSE) assert.equal(await get(port, p), 404, `dev-server refuses ${p}`)
+    await withDecoys(async () => { for (const p of MUST_REFUSE) assert.equal(await get(port, p), 404, `dev-server refuses ${p}`) })
   } finally { child.kill() }
 })
 
@@ -118,4 +130,27 @@ test('the published site is the app and nothing else', async () => {
   const files = siteFiles()
   for (const f of ['index.html', 'main.js', 'program.js', 'editorial.json', 'build.json', 'src/crt.js', 'fonts/ter-u16b.bdf']) assert.ok(files.includes(f), f)
   assert.ok(!files.some(f => f.startsWith('tools/') || f.startsWith('tests/') || f.split('/').some(s => s.startsWith('.'))), 'no tools, tests or dotfiles')
+})
+
+test('the site is built through the same rule, all the way down, licence included', async () => {
+  const { siteFiles } = await import('../tools/build-site.mjs')
+  const { mkdtempSync, mkdirSync } = await import('node:fs')
+  const os = await import('node:os')
+  const t = mkdtempSync(path.join(os.tmpdir(), 'interval-site-'))
+  try {
+    for (const f of ['index.html', 'editorial.json', 'LICENSE', 'NOTICE', 'secrets.json', 'config.local.json',
+      'src/crt.js', 'src/deep/more/glyphs.js', 'src/deep/.hidden.js', 'fonts/sub/x.bdf', 'tools/admin.html', 'tests/a.test.mjs']) {
+      mkdirSync(path.dirname(path.join(t, f)), { recursive: true })
+      writeFileSync(path.join(t, f), 'x')
+    }
+    assert.deepEqual(siteFiles(t), ['LICENSE', 'NOTICE', 'editorial.json', 'fonts/sub/x.bdf', 'index.html', 'src/crt.js', 'src/deep/more/glyphs.js'])
+  } finally { rmSync(t, { recursive: true, force: true }) }
+})
+
+test('the dashboard never puts feed-quoting text into innerHTML', () => {
+  // No DOM here to render it in, so this reads the source: every innerHTML
+  // that interpolates must interpolate only the dashboard's own values.
+  const html = readFileSync(path.join(root, 'tools/admin.html'), 'utf8')
+  const risky = html.split('\n').filter(l => /innerHTML\s*=/.test(l) && /\$\{[^}]*(message|issues|error|title|text)/.test(l))
+  assert.deepEqual(risky, [])
 })

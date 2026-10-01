@@ -382,7 +382,10 @@ function renderPreview() {
   const def = Pages.pageDef(current, c)
   $('pv-title').textContent = def ? `${current}  ${def.title}` : current
   let subs = null
-  try { subs = def?.render(c) } catch (e) { $('pv-status').innerHTML = `<span class="bad">render threw: ${e.message}</span>`; return }
+  // Built with h(), never innerHTML (2026-10-01): a render error and a
+  // page's issues quote feed text, and a headline with markup in it would
+  // have been parsed as HTML in the dashboard's own origin.
+  try { subs = def?.render(c) } catch (e) { $('pv-status').replaceChildren(h('span', { class: 'bad' }, `render threw: ${e.message}`)); return }
   if (!subs) {
     const g = $('pv').getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, 999, 999)
     $('pv-status').textContent = `Not on air yet: waiting for ${(def?.feeds || []).join(', ')}. The set would still be searching.`
@@ -395,9 +398,10 @@ function renderPreview() {
   const reveal = $('pv-reveal').checked
   drawPage($('pv'), p, { reveal, mono: $('pv-mono').checked })
   $('pv-sub').textContent = `${sub + 1}/${subs.length}`
-  const issues = p.issues.length ? `<span class="bad">${p.issues.join('; ')}</span>` : ''
+  const issues = p.issues.length ? h('span', { class: 'bad' }, p.issues.join('; ')) : null
   const src = (def.feeds || []).map(id => `${id} ${feeds.status(id)}`).join(', ')
-  $('pv-status').innerHTML = [src && `sources: ${src}`, issues].filter(Boolean).join('<br>')
+  const parts = [src && `sources: ${src}`, issues].filter(Boolean)
+  $('pv-status').replaceChildren(...parts.flatMap((x, i) => i ? [h('br'), x] : [x]))
   $('pv-text').textContent = p.lines({ reveal }).map((l, i) => String(i).padStart(2) + '|' + l).join('\n')
 }
 $('pv-prev').onclick = () => { sub = Math.max(0, sub - 1); renderPreview() }

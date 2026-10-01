@@ -40,7 +40,11 @@ export function parseLine(line, { fg = WHITE, bg = BLACK } = {}) {
     else if (!close) cur.fg = COLOUR_LETTERS[tag]
   }
   cur.text += s.slice(at)
-  push()
+  // A line that ends on a background change ("[bg=b]TITLE[bg=k]") keeps it
+  // as an empty segment: the change is the point, though no text follows.
+  const last = segments[segments.length - 1]
+  if (!cur.text && cur.bg !== (last ? last.bg : bg)) segments.push(cur)
+  else push()
   for (const seg of segments) seg.text = fold(seg.text)
   return { dh, segments }
 }
@@ -61,8 +65,12 @@ export function drawLines(page, lines, top, col = 1) {
   for (const line of lines) {
     const { dh, segments } = parseLine(line)
     let c = col
+    // Paint on every change of background, black included (2026-10-01):
+    // painting only the non-black ones left "[bg=b]A[bg=k]B" blue to the
+    // end of the row, since nothing painted the black back over it.
+    let bg = BLACK
     for (const seg of segments) {
-      if (seg.bg !== BLACK) { page.band(r, seg.bg, c, COLS); if (dh) page.band(r + 1, seg.bg, c, COLS) }
+      if (seg.bg !== bg) { bg = seg.bg; page.band(r, bg, c, COLS); if (dh) page.band(r + 1, bg, c, COLS) }
       if (dh) c = page.double(r, c, seg.text, seg.fg, seg.bg)
       else if (seg.con) c = page.concealed(r, c, seg.text, seg.fg, seg.bg)
       else if (seg.flash) c = page.flashing(r, c, seg.text, seg.fg, seg.bg)

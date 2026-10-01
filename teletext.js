@@ -134,6 +134,10 @@ export class Page {
     this.fastext = []
     /** Anything written off the page: the lint reports these. */
     this.issues = []
+    /** Whether a number printed on this page can be tapped to go there.
+     *  pages.js turns it off for every page drawn from data (see
+     *  pageNumberAt). */
+    this.links = true
   }
 
   cell(r, c) {
@@ -281,13 +285,21 @@ export class Page {
 
   /** The page number printed at row r, column c, if one is: a magazine digit
    *  and two hex digits standing alone (not part of "2026" or "4.5"). What a
-   *  click on the screen follows. A near miss by one column still counts,
-   *  since a thumb is wider than a character. */
+   *  tap on the screen follows. A near miss by one column still counts,
+   *  since a thumb is wider than a character.
+   *
+   *  2026-10-01: "standing alone" was "not next to a letter, digit or full
+   *  stop", and a review found "1,200" linking to 200 and "102/85" to 102.
+   *  Now it means space or the row's edge on both sides, with one sentence
+   *  mark allowed after ("199 is help.", "SEE 401,"). No rule of spelling
+   *  can tell "S&P 500" or an NBA score of 101 from "NEWS 101", though, so a
+   *  page drawn from data says it has no links at all (`links`, which
+   *  pages.js clears on every page that does not print page references). */
   pageNumberAt(r, c) {
     const row = this.cells[r]
-    if (!row) return null
+    if (!row || !this.links) return null
     const text = row.map(x => (x.mos >= 0 || x.dh === 2 ? ' ' : x.ch)).join('')
-    for (const m of text.matchAll(/(?<![\w.])[1-8][0-9A-F]{2}(?![\w.])/g)) {
+    for (const m of text.matchAll(/(?<=^|\s)[1-8][0-9A-F]{2}(?=$|\s|[.,;:!?)](?:\s|$))/g)) {
       if (c >= m.index - 1 && c <= m.index + 3) return m[0]
     }
     return null
@@ -328,6 +340,7 @@ export class Page {
     p.cells = this.cells.map(row => row.map(x => ({ ...x })))
     p.fastext = this.fastext.slice()
     p.issues = this.issues.slice()
+    p.links = this.links
     return p
   }
 }

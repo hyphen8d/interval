@@ -23,6 +23,28 @@ const fixture = (f) => JSON.parse(readFileSync(path.join(root, 'tests/fixtures',
 export const BASE_TIME = new Date(2026, 8, 28, 20, 0, 0).getTime()
 
 let bootCount = 0
+
+/** Return this from a `feeds` function for a source that never answers at
+ *  all (a fetch that hangs), while the others answer from fixtures. */
+export const NEVER = Symbol('never')
+
+/** A stand-in AudioContext that accepts any call and records every property
+ *  set on any node (`{ key, value }`), so a test can see, say, the line
+ *  whistle's frequency being set. Every node is a callable proxy; numbers
+ *  read from it (currentTime, sampleRate) are 0. */
+function fakeAudio(log) {
+  const node = () => new Proxy(function () {}, {
+    get(t, k) {
+      if (k === Symbol.toPrimitive) return () => 0
+      if (k === 'then') return undefined
+      if (k === 'state') return 'running'
+      return node()
+    },
+    set(t, k, v) { log.push({ key: k, value: v }); return true },
+    apply() { return node() },
+  })
+  return function AudioContext() { return node() }
+}
 let fontCache = null
 
 /** What each source answers with, by URL. */
@@ -56,7 +78,7 @@ export function fixtureFetch(url) {
  * @param {boolean} [o.secure] isSecureContext
  * @param {boolean} [o.power] switch on straight away (default true)
  */
-export async function boot({ feeds = 'fixtures', saved = null, query = '', location = false, secure = true, power = true, startAt = BASE_TIME } = {}) {
+export async function boot({ feeds = 'fixtures', saved = null, query = '', location = false, secure = true, power = true, startAt = BASE_TIME, audio = false } = {}) {
   const tag = `test${++bootCount}`
   let now = 0
   const timers = []
@@ -120,6 +142,7 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
     if (feeds === 'fail') return Promise.resolve({ ok: false, status: 503, json: async () => ({}) })
     let body
     try { body = typeof feeds === 'function' ? feeds(String(url)) : fixtureFetch(url) } catch (e) { return Promise.reject(e) }
+    if (body === NEVER) return new Promise(() => {})
     if (body === undefined && typeof feeds === 'function') body = fixtureFetch(url)
     if (body == null) return Promise.resolve({ ok: false, status: 404, json: async () => ({}) })
     return Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body)) })
@@ -128,6 +151,11 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
   const fastextLabels = []
   globalThis.INTERVAL_FASTEXT = (labels) => fastextLabels.push(labels)
   globalThis.INTERVAL_BUILD = tag
+  // Off by default: no AudioContext at all is what the sound code must
+  // survive. `audio: true` is for a test that needs to hear what was played.
+  const audioLog = []
+  if (audio) globalThis.AudioContext = fakeAudio(audioLog)
+  else delete globalThis.AudioContext
   delete globalThis.INTERVAL_FORCE_RX
 
   const { parseBDF } = await import('../src/bdf.js')
@@ -145,7 +173,7 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
   const s = { term, crt, program }
 
   const h = {
-    program, term, crt, s, announced, requests, opened, geoCalls, reloads, store, fastextLabels,
+    program, term, crt, s, announced, requests, opened, geoCalls, reloads, store, fastextLabels, audioLog, tag,
     get now() { return now },
     /** Move the clock, driving frames and timers. */
     advance(ms) {
@@ -161,6 +189,20 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
         }
         program.frame(s, now / 1000)
       }
+    },
+    /** Move the clock with no animation frames at all: a covered window,
+     *  which reports visible and gets 0fps. Only timers run. */
+    starve(ms) {
+      const end = now + ms
+      for (;;) {
+        timers.sort((a, b) => a.at - b.at)
+        const t = timers[0]
+        if (!t || t.at > end) break
+        now = Math.max(now, t.at)
+        if (t.every) t.at += t.every; else timers.shift()
+        try { t.fn() } catch (e) { console.error(e) }
+      }
+      now = end
     },
     /** Let pending promises (feed loads) settle. */
     async flush() { for (let i = 0; i < 30; i++) await new Promise(r => setImmediate(r)) },
@@ -196,6 +238,7 @@ export async function boot({ feeds = 'fixtures', saved = null, query = '', locat
     shutdown() {
       clearInterval(program.fallback); clearInterval(program.buildCheck)
       globalThis.Date = RealDate
+      delete globalThis.AudioContext
       Object.defineProperty(globalThis, 'performance', { value: realPerformance, configurable: true, writable: true })
     },
   }

@@ -25,7 +25,11 @@ export function siteFiles(root = ROOT) {
       const r = rel ? `${rel}/${name}` : name
       if (name.startsWith('.') || name === 'node_modules' || name === '_site') continue
       const st = statSync(path.join(root, r))
-      if (st.isDirectory()) { if (!rel && ['fonts', 'src', 'screenshots'].includes(name)) walk(r); continue }
+      // Below the top level, every directory is walked and each file still
+      // goes through servable(). 2026-10-01: only the top of fonts/, src/
+      // and screenshots/ was read, so a file in a subdirectory the servers
+      // served (src/x/y.js) would have been missing from the site.
+      if (st.isDirectory()) { if (rel || ['fonts', 'src', 'screenshots'].includes(name)) walk(r); continue }
       if (r.startsWith('tools/')) continue
       if (servable(r)) out.push(r)
     }

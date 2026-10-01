@@ -99,6 +99,10 @@ rebuilt.
   for a page the broadcaster wasn't sending). Once a source has *failed*
   with nothing cached, the page is the off-air page, which says why. Stale
   data is always shown, with its age on row 23 in red. Never hide it.
+  `creditText` never clips the time; it drops "SOURCE:" and then the label
+  first. A source that answers with nothing still gets a page that says so
+  (`render()` never returns `[]`), and a render that throws is the set's
+  `faultPage`, off air with the reason (2026-10-01).
 - **Pages are re-sent.** Each time a page's slot comes round, `retransmit()`
   re-renders it (fresh data, the broadcaster's next subpage) and runs one
   reception pass, which repairs some of the damage. HOLD freezes the subpage.
@@ -117,7 +121,10 @@ rebuilt.
   all seven. Each page stays up long enough for its subpages (12-36s,
   `cycleDwell`), and the breathing page for two full breaths. H while cycling
   holds the *section*; otherwise H holds the page. Keying a page, or a coloured
-  key, stops it. While it runs, row 24 is a strip ("CYCLING NEWS  H HOLDS  N
+  key, or Escape on the search it made, stops it. A page whose source hasn't
+  answered in `FEED_WAIT_MS` (15s) is passed over, and a section with nothing
+  to show is skipped (`cycleFind`); with nothing anywhere, N says NO PAGES.
+  While it runs, row 24 is a strip ("CYCLING NEWS  H HOLDS  N
   STOPS") and the coloured keys are hidden. The weather pages that would only
   ask for a location are skipped until the set has one, and so are pages
   marked `noCycle` (the focus timer and the decider, 502 and 503: pages you
@@ -165,6 +172,8 @@ rebuilt.
   fastext keys (START/PAUSE, RESET, BREAK/WORK). It lives on the program
   (`this.focus`, `focusTick`), not the page, so it keeps running on other
   pages, and when it ends it chimes, says so in the header and announces it.
+  Switching off pauses it, so it never runs out unseen and chimes at the next
+  switch-on.
   **503 Decide**: red rolls a d20, green flips a coin; the result is fixed
   when the key is pressed and the tumble (`ROLL_MS`) is only a show of it.
   **203 Coming up** ticks three countdowns (the weekend, the next US holiday
@@ -180,7 +189,11 @@ rebuilt.
   **unofficial and undocumented** and could change without notice; the
   capture is the only spec (`tests/fixtures/espn-*.json`). A scoreboard with
   a game in progress refreshes every minute (`liveRefreshMs` + `isLive` on the
-  feed), otherwise every 15. **ESPN refuses headless Chrome** with a 403 (bot
+  feed), otherwise every 15; a game from 15 minutes before its start counts
+  as live (`scoreboardLive`). A live copy goes stale on the live period
+  (`staleAfter(feed, data)`, `isStale`), so a frozen score shows its age in
+  minutes. Pages ask `isStale`; they never work the age out themselves.
+  **ESPN refuses headless Chrome** with a 403 (bot
   screening on the `HeadlessChrome` user agent and client hints) while
   answering a real browser and curl; checked 2026-09-28 from the Pages origin
   in a real Chrome, all six answered. `tools/shoot.mjs` overrides the UA for
@@ -190,7 +203,8 @@ rebuilt.
   Born today are six screens each (`pickEvenly`). 302 is twelve US cities in
   one Open-Meteo request, so the weather section cycles without a location.
 - **The set lands on 190, the welcome,** every time it's switched on (not the
-  last page). `?page=` still opens where it points.
+  last page), off and on again included: `powerDown` forgets the page.
+  `?page=` opens where it points on the first switch-on only.
 - **Subpages count from arrival,** so a page always opens on its first screen.
   The first version followed the broadcaster's clock and opened a twelve-fact
   page at fact seven.
@@ -203,8 +217,11 @@ rebuilt.
   built and then removed, because driving the set from the keys is SIGNAL's
   character and a cursor on the picture breaks it. `main.js` ignores
   `pointerType === 'mouse'`. On touch, a tap on a printed page number
-  (`Page.pageNumberAt`: a lone `[1-8][0-9A-F]{2}`, so "2026" and "4.5" are not
-  links, and nor is a page that isn't carried) or on a coloured key follows it.
+  (`Page.pageNumberAt`: a `[1-8][0-9A-F]{2}` with a space or the row's edge
+  each side, one closing punctuation mark allowed, so "2026", "4.5", "1,200"
+  and "102/85" are not links, and nor is a page that isn't carried; pages
+  drawn from data set `Page.links = false`, for "S&P 500" and a score of
+  101, so only 100, 190, 199, 1AF and notices link) or on a coloured key follows it.
   A tap on a set in standby switches it on. A sideways swipe turns the
   subpage, and a vertical one steps the page (`pointer.js` `gesture`).
   `pointer.js` `cellAt` inverts the CRT composite's geometry (fill, aspect,
@@ -255,9 +272,14 @@ publishes `markets.json` beside the site. Page 401 reads it like any feed,
 shows each row's own close date, and says so if the file hasn't been rebuilt
 in three days. `check-feeds` probes the live copy, so a stopped schedule shows
 up as a failing source. `markets.json` is gitignored: run `npm run markets`
-for a local copy. The same run builds 402's `household` series; inflation is
+for a local copy. FRED marks a day with no value with an empty field now
+(once "."), and `+''` is 0, so `fredRows` drops both. A series that fails is
+carried over from the live copy (`--previous`, `carried: true`, its own
+date), and if nothing answers, the live file is republished as it was:
+a Pages deploy replaces the whole site, so a run without markets.json would
+delete the last good one. The same run builds 402's `household` series; inflation is
 worked out from the CPI index as a twelve-month change (`yoyFromCsv`, which
-needs 22 months of rows). `parseMarkets` must carry `household` through:
+matches each month to the same month a year before, by date). `parseMarkets` must carry `household` through:
 the first cut dropped it and 402 said "not in the last build" against a
 build that had it, since its page tests read around the parser.
 **Did you know** (102) is a
@@ -276,7 +298,8 @@ capture actually says, and read the diff first: a changed shape is the finding.
 set uses**, so "ok" means the page could be drawn. It also fails a source
 that answers without `access-control-allow-origin` (a browser would refuse
 it) and an empty one. `tools/feed-health.json`
-keeps the record (committed); `strikes` counts consecutive failures.
+keeps the record (committed); `strikes` counts consecutive failures,
+and a source no longer in `FEEDS` is pruned on every write.
 `tools/feed-watch.mjs` notifies only at 2 strikes, so a finding has to be
 seen twice (SIGNAL's watch cried wolf for five days before it learned
 that). Clean runs say nothing.
@@ -300,7 +323,10 @@ It uses SIGNAL's guards for SIGNAL's reasons: loopback by default
 (`--host=tailscale` to bind the tailnet; an empty `--host=` is an error),
 a Host-header allowlist, an `X-Interval-Admin` header on every mutating route,
 and a **static allowlist** (`servable()`), with a second copy in
-`dev-server.py`. Change one, change both: `tests/admin-server.test.mjs` runs
+`dev-server.py`. Root JSON is allowed **by name** (build.json,
+editorial.json, markets.json), never by extension: SHIP's `git add -A` and
+the site build would otherwise carry a stray secrets file out. LICENSE and
+NOTICE are allowed by name too. Change one, change both: `tests/admin-server.test.mjs` runs
 the same must-serve and must-refuse lists against both, and uses `http.request`,
 because `fetch` silently drops a custom Host header. The only writable file is
 `editorial.json`. Saves are linted first and refused on any error, written
@@ -339,6 +365,8 @@ TAP here. Use `--test-reporter=tap` when parsing output.
 - **Comments are the design record**, as in SIGNAL: what was tried, what broke,
   and why this shape won, next to the code it governs.
 - Run `npm run stamp` before every deploy (SHIP does it).
+- Thoughts (501) must end above the candle: the lint measures each one as
+  drawn (`thoughtRows`), not by a character count.
 - Fastext labels are at most 9 characters. At 10, a label runs into the next
   one, and the lint holds this.
 - `screenshots/` comes from `npm run shoot` against the **local** tree, never

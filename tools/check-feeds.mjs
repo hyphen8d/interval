@@ -50,8 +50,15 @@ export function summarise(id, data) {
     case 'launches': return { items: data.launches.length, detail: `next: ${data.launches.find(l => l.net > Date.now())?.mission || 'none'}` }
     case 'holidays': return { items: data.holidays.length, detail: `next: ${data.holidays[0]?.names.join(' / ')} ${data.holidays[0]?.date}` }
     case 'markets': {
+      // 2026-10-01: a file with no `at` (or one that isn't a date) made the
+      // age NaN, and NaN > 96 is false, so it passed as fresh for ever. A
+      // build time the probe can't read is a failure in its own right, and
+      // so is one in the future.
       const age = (Date.now() - Date.parse(data.at)) / 3600e3
-      return { items: data.series.length, detail: `${data.series.length} series, built ${Math.round(age)}h ago`, staleHours: Math.round(age) > 96 ? Math.round(age) : 0 }
+      const n = `${data.series.length} series`
+      if (!Number.isFinite(age)) return { items: data.series.length, detail: n, problem: 'markets.json has no readable build time (`at`), so its age is unknown' }
+      if (age < -1) return { items: data.series.length, detail: n, problem: `markets.json says it was built in the future (${data.at})` }
+      return { items: data.series.length, detail: `${n}, built ${Math.round(age)}h ago`, staleHours: Math.round(age) > 96 ? Math.round(age) : 0 }
     }
     default:
       if (id.startsWith('sport_')) return { items: 1, detail: `${data.games.length} games this week${data.games.some(g => g.state === 'in') ? ', live now' : ''}` }
@@ -97,6 +104,7 @@ export async function probe(id, feed, { fetchImpl = globalThis.fetch, now = new 
     out.ok = false
     out.error = `no access-control-allow-origin on ${noCors[0].url} -- a browser would refuse it`
   }
+  if (out.ok && out.problem) { out.ok = false; out.error = out.problem }
   if (out.ok && out.items === 0) { out.ok = false; out.error = 'answered, but with nothing in it' }
   if (out.ok && out.staleHours > 12) { out.ok = false; out.error = id === 'markets' ? `markets.json was last built ${out.staleHours}h ago: is the deploy workflow's schedule running?` : `latest reading is ${out.staleHours}h old` }
   return out
@@ -113,6 +121,19 @@ export function record(health, result) {
   const lastOk = result.ok ? result.checkedAt : prev.lastOk ?? null
   health.feeds[result.id] = { ...result, strikes, lastOk }
   health.checkedAt = result.checkedAt
+  return health
+}
+
+/**
+ * Drop the record of any source that is no longer one. 2026-10-01: record()
+ * only ever added, so the file still held featured, quakes, hn, kp, signal,
+ * dyk, rates, metals and world a day after those pages went, and the
+ * dashboard's "failed twice in a row" banner reads every entry in it: a
+ * removed source's last strikes would have raised it for good.
+ */
+export function prune(health, ids) {
+  const keep = new Set(ids)
+  health.feeds = Object.fromEntries(Object.entries(health.feeds || {}).filter(([id]) => keep.has(id)))
   return health
 }
 
@@ -136,7 +157,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     results.push(health.feeds[id])
     if (!json) console.error(`${r.ok ? 'ok  ' : 'FAIL'} ${id.padEnd(9)} ${String(r.ms).padStart(5)}ms  ${r.ok ? r.detail : r.error}`)
   }
-  writeHealth(health)
+  writeHealth(prune(health, Object.keys(FEEDS)))
   const failed = results.filter(r => !r.ok)
   if (json) console.log(JSON.stringify({ checkedAt: health.checkedAt, results, failed: failed.map(r => r.id) }, null, 2))
   else console.error(failed.length ? `${failed.length} source(s) failing.` : 'every source answered, open to browsers, in the shape the pages expect.')

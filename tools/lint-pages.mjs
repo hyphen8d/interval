@@ -5,12 +5,14 @@
 //   - nothing is written off the page (the page model records every write
 //     past column 40 or into a row that is not there)
 //   - every fastext link goes to a page the set can reach, or to one of the
-//     set's own actions (overnight, locate, a SIGNAL station, the game)
+//     set's own actions (locate, the four-keys game, the focus timer, the
+//     decider)
 //   - every index entry is a page that exists
 //   - editorial.json: notice pages on free numbers, titles that fit the
-//     masthead, lines that fit the page; quiz answers that fit their row;
-//     four-keys questions with four options and a real answer; thoughts
-//     short enough to read at a glance
+//     masthead, lines that fit the page; four-keys questions with four
+//     options and a real answer; facts that fit; thoughts that end above
+//     501's candle. The quiz pages are gone (2026-09-28) but their questions
+//     stay in the file, so any there are still checked; none are required.
 //   - the help page's labels fit its column
 //
 // Exported as lint() so the admin server and the suite run the same code the
@@ -28,8 +30,6 @@ export const FOURKEYS_OPTION_MAX = 24
 export const FASTEXT_LABEL_MAX = 8
 export const FASTEXT_LABEL = /^[A-Z0-9&-]{1,8}$/
 export const HELP_LABEL_MAX = 28
-/** A thought is read at a glance: eight lines of the page at most. */
-export const THOUGHT_MAX = 240
 /** A fact is a glance too: four lines. */
 export const FACT_MAX = 160
 export const FACT_TAGS = ['TECH', 'GAMES', 'HACKING']
@@ -43,7 +43,7 @@ const SPECIAL = /^(locate|sub:next|game:(\d|next|reset)|focus:(start|reset|mode)
  */
 export async function lint({ editorial } = {}) {
   editorial ??= JSON.parse(readFileSync(path.join(ROOT, 'editorial.json'), 'utf8'))
-  const { PAGES, pageDef, pageOrder, INDEX, FACTS_PER_DAY } = await import('../pages.js')
+  const { PAGES, pageDef, pageOrder, INDEX, FACTS_PER_DAY, thoughtRows, THOUGHT_TOP, CANDLE_ROW } = await import('../pages.js')
   const { validPage } = await import('../carousel.js')
   const { lintLines } = await import('../markup.js')
   const { KEYS } = await import('../constants.js')
@@ -68,7 +68,6 @@ export async function lint({ editorial } = {}) {
   if (!seen.has('190')) errors.push('editorial: page 190 (WELCOME), where the set lands, has no notice')
 
   const quiz = editorial.quiz || []
-  if (!quiz.length) errors.push('editorial: the quiz (600) has no questions')
   quiz.forEach((q, i) => {
     if (!q.q || !String(q.q).trim()) errors.push(`quiz ${i + 1}: no question`)
     if (!q.a || !String(q.a).trim()) errors.push(`quiz ${i + 1}: no answer`)
@@ -100,7 +99,9 @@ export async function lint({ editorial } = {}) {
   if (!thoughts.length) errors.push('editorial: A THOUGHT (501) has no thoughts')
   thoughts.forEach((t, i) => {
     if (!t.text || !String(t.text).trim()) errors.push(`thought ${i + 1}: no text`)
-    else if (String(t.text).length > THOUGHT_MAX) errors.push(`thought ${i + 1}: ${t.text.length} long; ${THOUGHT_MAX} read at a glance`)
+    // Measured as drawn, every thought, not only the fixture day's: the
+    // page lint below renders just the one 501 shows on that date.
+    else if (THOUGHT_TOP + thoughtRows(t) > CANDLE_ROW) errors.push(`thought ${i + 1}: takes ${thoughtRows(t)} rows with its "by" line; ${CANDLE_ROW - THOUGHT_TOP} fit above the candle`)
     if ((t.by || '').length > 30) errors.push(`thought ${i + 1}: "by" is ${t.by.length} long; 30 fit`)
   })
 

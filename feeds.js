@@ -412,7 +412,7 @@ export const FEEDS = {
     label: 'ESPN', title: `ESPN: ${name} scoreboard`, refreshMs: 15 * MIN,
     // While a game is on, every minute: a score is the one thing on this
     // service that changes by the minute and is watched that way.
-    liveRefreshMs: MIN, isLive: anyLive,
+    liveRefreshMs: MIN, isLive: scoreboardLive,
     url: () => scoreboardUrl(path),
     load: async (f) => parseScoreboard(await getJSON(f, scoreboardUrl(path))),
   }])),
@@ -438,8 +438,45 @@ export const FEEDS = {
 // The cache
 // ---------------------------------------------------------------------------
 
-/** How old a copy has to be before its page says so. */
-export const staleAfter = (feed) => feed.refreshMs * 3
+/**
+ * A scoreboard is on the minute-by-minute rate while a game is on, and also
+ * from one refresh period before a game's start (2026-10-01). At the
+ * fifteen-minute rate a game could still read "not started" a quarter of an
+ * hour after kickoff, since only a game already 'in' sped the feed up. Bounded
+ * to three hours past the start, so a game ESPN leaves at 'pre' (a delay it
+ * never resolves) doesn't hold the feed at once a minute for good.
+ */
+export function scoreboardLive(data, now = Date.now()) {
+  if (anyLive(data)) return true
+  return !!data?.games?.some(g => g.state === 'pre' && g.date - 15 * MIN <= now && now <= g.date + 3 * 60 * MIN)
+}
+
+/**
+ * How old a copy has to be before its page says so: three refresh periods,
+ * and three of the LIVE period while the copy is live. 2026-10-01: it was
+ * always refreshMs * 3, so a live score that stopped updating read as fresh
+ * for 45 minutes. `data` and `now` are optional, so `staleAfter(feed)` still
+ * answers the resting figure.
+ */
+export const staleAfter = (feed, data = null, now = Date.now()) =>
+  (feed.liveRefreshMs && data && feed.isLive?.(data, now) ? feed.liveRefreshMs : feed.refreshMs) * 3
+
+/** Whether an entry's copy should be shown as stale. A copy dated more than
+ *  a minute in the future (a saved copy from a skewed clock) is stale too:
+ *  `now - at` is negative, so by age alone it would read fresh for good. */
+export function isStale(feed, entry, now = Date.now()) {
+  if (!entry?.data) return false
+  return entry.at > now + MIN || now - entry.at > staleAfter(feed, entry.data, now)
+}
+
+/** How long a fetch may take before it counts as a failure. */
+export const FETCH_TIMEOUT_MS = 20 * 1000
+function deadline(ms) {
+  if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) return AbortSignal.timeout(ms)
+  const c = new AbortController()
+  setTimeout(() => c.abort(new Error('timed out')), ms)
+  return c.signal
+}
 
 /** Retry delay after the n-th consecutive failure: 1, 2, 4 ... 30 minutes. */
 export const backoffMs = (n) => Math.min(30, 2 ** Math.max(0, n - 1)) * MIN
@@ -453,9 +490,11 @@ export class FeedCache {
    * @param {object}   [o.storage]   localStorage-shaped, for a warm start
    * @param {Function} [o.onChange]  called with the feed id whenever an entry changes
    * @param {string}   [o.build]     the running build, stamped on each saved copy
+   * @param {number}   [o.timeoutMs] how long a fetch may take before it fails
    */
-  constructor({ fetch, now, env, storage = null, onChange = () => {}, feeds = FEEDS, build = globalThis.INTERVAL_BUILD ?? '' }) {
+  constructor({ fetch, now, env, storage = null, onChange = () => {}, feeds = FEEDS, build = globalThis.INTERVAL_BUILD ?? '', timeoutMs = FETCH_TIMEOUT_MS }) {
     this.build = String(build)
+    this.timeoutMs = timeoutMs
     this.fetch = fetch
     this.now = now
     this.env = env
@@ -475,15 +514,19 @@ export class FeedCache {
    * runs out. 2026-09-28: parseMarkets was fixed to keep 402's `household`,
    * and a browser holding a copy parsed by the old build kept 402 empty for
    * up to an hour after the fix was live.
+   *
+   * A copy dated in the future (saved under a clock that ran fast) is
+   * fetched again at once too: by age alone it would never fall due.
    */
   _restore(id) {
-    const blank = { key: null, data: null, at: 0, error: null, loading: false, failures: 0, retryAt: 0, reparse: false }
+    const blank = { key: null, data: null, at: 0, error: null, loading: false, failures: 0, retryAt: 0, reparse: false, failKey: null }
     if (!this.storage || this.feeds[id].persist === false) return blank
     try {
       const raw = this.storage.getItem(this._storageKey(id))
       if (!raw) return blank
       const saved = JSON.parse(raw)
-      return { ...blank, key: saved.key ?? null, data: saved.data ?? null, at: saved.at || 0, reparse: String(saved.build ?? '') !== this.build }
+      const at = saved.at || 0
+      return { ...blank, key: saved.key ?? null, data: saved.data ?? null, at, reparse: String(saved.build ?? '') !== this.build || at > this.now() + MIN }
     } catch (e) { return blank }
   }
 
@@ -511,33 +554,51 @@ export class FeedCache {
   status(id) {
     const e = this.get(id)
     if (!e) return 'none'
-    if (e.data) return this.now() - e.at > staleAfter(this.feeds[id]) ? 'stale' : 'fresh'
+    if (e.data) return isStale(this.feeds[id], e, this.now()) ? 'stale' : 'fresh'
     if (e.loading) return 'loading'
     if (e.error) return 'error'
     return 'none'
   }
 
-  /** Start a fetch if this feed is due and none is running. Resolves when
-   *  that fetch settles (or at once when nothing was due). Never rejects. */
+  /**
+   * Start a fetch if this feed is due and none is running. Resolves when
+   * that fetch settles (or at once when nothing was due). Never rejects.
+   *
+   * 2026-10-01, two holes closed. A fetch had no deadline, so one that
+   * stalled (a captive portal, a dropped connection the browser never
+   * reported) left the feed `loading` for good and it was never asked again:
+   * now it fails after `timeoutMs` and backs off like any failure. The fetch
+   * is given the signal, so a real one is aborted; the race is for a fetch
+   * (or a test's fake) that ignores it. And the backoff belonged to the feed,
+   * not the key, so after a night of failures the new day's dated key waited
+   * up to thirty minutes for its first try: a streak is now forgotten when
+   * the key it was against changes.
+   */
   ensure(id, { force = false } = {}) {
     const f = this.feeds[id], e = this.entries.get(id)
     if (!f || !e) return Promise.resolve()
     if (e.loading) return e.loading
     const key = this.keyFor(id)
     if (key === null) return Promise.resolve()
+    if (e.failures && e.failKey !== key) Object.assign(e, { failures: 0, retryAt: 0, error: null })
     const now = this.now()
     const current = e.data && e.key === key
-    const every = f.liveRefreshMs && f.isLive?.(e.data) ? f.liveRefreshMs : f.refreshMs
-    if (!force && current && !e.reparse && now - e.at < every) return Promise.resolve()
+    const every = f.liveRefreshMs && f.isLive?.(e.data, now) ? f.liveRefreshMs : f.refreshMs
+    const future = e.at > now + MIN
+    if (!force && current && !e.reparse && !future && now - e.at < every) return Promise.resolve()
     if (!force && e.retryAt > now) return Promise.resolve()
     const p = (async () => {
       try {
-        const data = await f.load(this.fetch, this.env)
-        Object.assign(e, { key, data, at: this.now(), error: null, failures: 0, retryAt: 0, reparse: false })
+        const signal = deadline(this.timeoutMs)
+        const fetchImpl = this.fetch && ((url, opts = {}) => this.fetch(url, { ...opts, signal }))
+        const gaveUp = new Promise((_, reject) => signal.addEventListener('abort',
+          () => reject(new Error(`no answer in ${Math.round(this.timeoutMs / 1000)}s`)), { once: true }))
+        const data = await Promise.race([f.load(fetchImpl, this.env), gaveUp])
+        Object.assign(e, { key, data, at: this.now(), error: null, failures: 0, retryAt: 0, reparse: false, failKey: null })
         this._persist(id, e)
       } catch (err) {
         e.failures++
-        Object.assign(e, { error: String(err?.message ?? err), retryAt: this.now() + backoffMs(e.failures) })
+        Object.assign(e, { error: String(err?.message ?? err), retryAt: this.now() + backoffMs(e.failures), failKey: key })
       } finally {
         e.loading = false
         this.onChange(id)

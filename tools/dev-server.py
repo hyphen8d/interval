@@ -20,8 +20,12 @@ import urllib.parse
 
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
 
+# Root JSON by name, not extension (2026-10-01): any .json used to pass, so a
+# secrets.json dropped in the root was served. LICENSE and NOTICE travel with
+# the MIT engine in src/. See the admin server's copy for the whole story.
 STATIC_DIRS = {'fonts', 'src', 'screenshots'}
-STATIC_TOP_EXT = {'.js', '.json', '.html', '.md', '.ico', '.png', '.jpg', '.svg'}
+STATIC_TOP_EXT = {'.js', '.html', '.md', '.ico', '.png', '.jpg', '.svg'}
+STATIC_TOP_NAMES = {'build.json', 'editorial.json', 'markets.json', 'LICENSE', 'NOTICE'}
 
 
 def servable(rel):
@@ -31,7 +35,7 @@ def servable(rel):
     if any(seg.startswith('.') for seg in parts):
         return False
     if len(parts) == 1:
-        return os.path.splitext(rel)[1].lower() in STATIC_TOP_EXT
+        return rel in STATIC_TOP_NAMES or os.path.splitext(rel)[1].lower() in STATIC_TOP_EXT
     if parts[0] == 'tools':
         if len(parts) == 2 and parts[1].endswith('.html'):
             return True
@@ -41,7 +45,8 @@ def servable(rel):
 
 class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map,
-                      '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json'}
+                      '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json',
+                      '': 'text/plain'}
 
     def send_head(self):
         rel = urllib.parse.urlsplit(self.path).path

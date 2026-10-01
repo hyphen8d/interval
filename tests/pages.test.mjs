@@ -99,7 +99,7 @@ test('the help page lists every key the set answers', () => {
 test('index.html tells a screen reader about every key too', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
   const about = html.slice(html.indexOf('id="about"'), html.indexOf('id="announce"')).replace(/\s+/g, ' ')
-  const words = { digits: 'page number', updown: 'Up and down', leftright: 'left and right', fastext: 'F1', index: 'I goes', reveal: 'R reveals', hold: 'H holds', size: 'S changes', colour: 'C changes', cycle: 'N turns cycling', fullscreen: 'F is', cancel: 'Escape', power: 'P switches' }
+  const words = { digits: 'page number', updown: 'Up and down', leftright: 'left and right', fastext: 'F1', index: 'I goes', help: 'question mark to help', reveal: 'R reveals', hold: 'H holds', size: 'S changes', colour: 'C changes', cycle: 'N turns cycling', fullscreen: 'F is', cancel: 'Escape', power: 'P switches' }
   for (const k of KEYS) assert.ok(about.includes(words[k.id]), `${k.id} is described`)
 })
 
@@ -272,4 +272,178 @@ test('the index: sections in page-number order, a NOW line from whatever has ans
   const none = pageDef('100', bare).render(bare)
   assert.ok(none && !none[0].lines()[3].includes('NOW'))
   assert.equal(nowItems(bare).length, 0)
+})
+
+// -- 2026-10-01: the review's findings, each held ----------------------------
+
+test('sport: a sixteenth game is not written over by the live line', () => {
+  const base = DATA.sport_nfl.games[0]
+  const games = Array.from({ length: 16 }, (_, i) => ({ ...base, state: i === 0 ? 'in' : 'post', detail: i === 0 ? 'Q3 4:21' : 'FINAL', date: NOW - i * 3600e3, away: { ...base.away, abbr: `A${String(i).padStart(2, '0')}` }, home: { ...base.home } }))
+  const ctx = ctxWith({ ...allData(), sport_nfl: { ...DATA.sport_nfl, games } })
+  const subs = pageDef('601', ctx).render(ctx)
+  assert.equal(subs.length, 1)
+  const lines = subs[0].lines()
+  assert.match(lines[21], /^ A15/, 'the sixteenth game is on row 21')
+  assert.match(lines[22], /LIVE: SCORES UPDATE EVERY MINUTE/)
+  assert.match(lines[23], /ESPN/, 'and the credit keeps row 23')
+})
+
+test('the credit line always keeps its time, whatever the label', async () => {
+  const { creditText } = await import('../pages.js')
+  const fri = new Date(2026, 8, 25, 14, 2).getTime()
+  for (const id of Object.keys(F.FEEDS)) {
+    for (const at of [fri, NOW - 60000]) {
+      const ctx = { ...ctxWith(), entry: () => ({ data: {}, at }) }
+      const { text } = creditText(ctx, id)
+      assert.ok(text.length <= 38, `${id}: "${text}" fits`)
+      if (at === fri) assert.match(text, / NOT UPDATED SINCE FRI 14:02$/, `${id}: "${text}" keeps the age`)
+      else assert.match(text, /UPDATED 19:59$/, `${id}: "${text}"`)
+    }
+  }
+})
+
+test('coming up keeps the rules: waits, goes off air, shows a failure and a stale age', () => {
+  const none = ctxWith({})
+  assert.equal(pageDef('203', none).render(none), null, 'neither source has answered: still searching')
+  const both = ctxWith({}, {}, { errors: { holidays: 'HTTP 500', launches: 'HTTP 429' } })
+  assert.match(pageDef('203', both).render(both)[0].lines().join(' '), /OFF AIR/)
+  const data = allData(); delete data.launches
+  const one = ctxWith(data, {}, { errors: { launches: 'HTTP 429' } })
+  const text = pageDef('203', one).render(one)[0].lines().join('\n')
+  assert.match(text, /OFF AIR: HTTP 429/, 'the failed section says so')
+  assert.ok(!/WAITING FOR THE SCHEDULE/.test(text), 'and does not wait forever')
+  assert.match(text, /Columbus Day/, 'the other section still shows')
+  const old = ctxWith(allData(), {}, { at: NOW - 4 * 864e5 })
+  const [p] = pageDef('203', old).render(old)
+  assert.match(p.lines()[23], /NOT UPDATED SINCE/)
+  assert.equal(p.cells[23][1].fg, 1, 'in red')
+  const fresh = ctxWith()
+  assert.match(pageDef('203', fresh).render(fresh)[0].lines()[23], /NAGER\.DATE & THE SPACE DEVS/)
+})
+
+test('coming up and the weather print no "undefined" or "NaN"', () => {
+  const data = allData()
+  data.launches = { launches: data.launches.launches.map(l => ({ ...l, provider: undefined, where: undefined })) }
+  data.weather = { ...data.weather, current: { ...data.weather.current, temp: NaN }, days: data.weather.days.map((d, i) => (i === 1 ? { ...d, hi: NaN, lo: NaN } : d)) }
+  data.cities = { ...data.cities, cities: data.cities.cities.map((c, i) => (i ? c : { ...c, temp: NaN, hi: NaN })) }
+  const ctx = ctxWith(data)
+  for (const num of ['203', '300', '301', '302', '100']) {
+    for (const p of pageDef(num, ctx).render(ctx)) {
+      const t = p.lines().join('\n')
+      assert.ok(!/undefined|NaN/.test(t), `${num}: ${t.match(/.*(undefined|NaN).*/)?.[0]}`)
+      assert.deepEqual(p.issues, [])
+    }
+  }
+})
+
+test('101\'s masthead is the day, without a comma', () => {
+  const ctx = ctxWith()
+  assert.match(pageDef('101', ctx).render(ctx)[0].lines()[1], /MONDAY$/)
+})
+
+test('facts and the thought change from December 31 to January 1', async () => {
+  const { factsFor, thoughtFor } = await import('../pages.js')
+  const eve = new Date(2026, 11, 31, 12).getTime(), day = new Date(2027, 0, 1, 12).getTime()
+  assert.notDeepEqual(factsFor(editorial.facts, eve), factsFor(editorial.facts, day))
+  assert.notEqual(thoughtFor(editorial.thoughts, eve), thoughtFor(editorial.thoughts, day))
+  for (let i = 0; i < 400; i++) {
+    const a = new Date(2026, 0, 1 + i, 12).getTime(), b = new Date(2026, 0, 2 + i, 12).getTime()
+    assert.notEqual(thoughtFor(editorial.thoughts, a), thoughtFor(editorial.thoughts, b), `day ${i}`)
+  }
+})
+
+test('every thought ends above the candle, and the lint says so of one that would not', async () => {
+  const { thoughtRows, THOUGHT_TOP, CANDLE_ROW } = await import('../pages.js')
+  for (const t of editorial.thoughts) assert.ok(THOUGHT_TOP + thoughtRows(t) <= CANDLE_ROW, t.text)
+  const { lint } = await import('../tools/lint-pages.mjs')
+  const long = { text: 'word '.repeat(38).trim(), by: 'Somebody' }
+  assert.ok(long.text.length < 240, 'under the old limit, and still too long')
+  const r = await lint({ editorial: { ...editorial, thoughts: [...editorial.thoughts, long] } })
+  assert.ok(r.errors.some(e => /thought \d+: .* above the candle/.test(e)), r.errors.join('\n'))
+  const quizless = await lint({ editorial: { ...editorial, quiz: [] } })
+  assert.ok(!quizless.errors.some(e => /quiz/.test(e)), 'the quiz pages are gone; its questions are not required')
+})
+
+test('a source that answers with nothing still gets a page', () => {
+  const data = allData()
+  data.itn = { ...data.itn, stories: [] }
+  data.events = { items: [] }
+  data.otd = { ...data.otd, selected: [], events: [], births: [] }
+  const ctx = ctxWith(data)
+  for (const num of ['101', '200', '201']) {
+    const subs = pageDef(num, ctx).render(ctx)
+    assert.ok(Array.isArray(subs) && subs.length === 1, `${num} renders a page`)
+    assert.deepEqual(subs[0].issues, [])
+  }
+})
+
+test('every page renders something from every source state, never an empty list', () => {
+  const states = [ctxWith(), ctxWith({}), ctxWith({}, {}, { errors: Object.fromEntries(Object.keys(F.FEEDS).map(id => [id, 'HTTP 500'])) })]
+  for (const ctx of states) {
+    for (const num of everyPage(ctx)) {
+      const out = pageDef(num, ctx).render(ctx)
+      assert.ok(out === null || out.length > 0, `${num}`)
+    }
+  }
+})
+
+test('money: a malformed row is skipped, and an unknown build time is not called fresh', () => {
+  const data = allData()
+  data.markets = {
+    ...data.markets, at: null,
+    series: [{ ...data.markets.series[0], date: undefined }, { name: 'BROKEN' }, ...data.markets.series.slice(1)],
+    household: [{ ...data.markets.household[0], date: undefined }, { name: 'BROKEN' }, ...data.markets.household.slice(1)],
+  }
+  const ctx = ctxWith(data)
+  const mk = pageDef('401', ctx).render(ctx)[0]
+  assert.match(mk.lines()[4], /DOW JONES/)
+  assert.match(mk.lines()[5], /CLOSE --/)
+  assert.ok(!mk.lines().join(' ').includes('BROKEN'))
+  assert.match(mk.lines()[21], /NO BUILD TIME/)
+  assert.equal(mk.cells[21][1].fg, 1, 'in red')
+  const hh = pageDef('402', ctx).render(ctx)[0].lines().join('\n')
+  assert.ok(!hh.includes('BROKEN') && !/undefined|NaN/.test(hh))
+})
+
+test('the hidden game wears its own magazine, not sport\'s', () => {
+  const ctx = ctxWith()
+  const [p] = pageDef('1FF', ctx).render(ctx)
+  assert.equal(p.cells[1][0].bg, MAGAZINES[1].band)
+})
+
+test('the NOW line leaves out a score or a temperature from a stale copy', () => {
+  const data = allData()
+  const g = { ...data.sport_nfl.games[0], state: 'in', detail: 'Q2 1:00' }
+  data.sport_nfl = { ...data.sport_nfl, games: [g] }
+  const fresh = ctxWith(data)
+  assert.ok(nowItems(fresh).some(([t]) => t.startsWith(`${g.away.abbr} `)), 'a fresh live game is shown')
+  const stale = { ...fresh, entry: (id) => ({ ...fresh.entry(id), at: id === 'markets' ? NOW - 60000 : NOW - 2 * 864e5 }) }
+  const items = nowItems(stale).map(([t]) => t)
+  assert.ok(items.some(t => t.startsWith('DOW')))
+  assert.ok(!items.some(t => /^(HERE|NYC) /.test(t)), 'no stale temperature')
+  assert.equal(items.length, 1, `no stale score: ${items}`)
+})
+
+test('only pages that print page references link them: not "S&P 500", not a score', () => {
+  const ctx = ctxWith()
+  const linked = (num) => pageDef(num, ctx).render(ctx).some(p => p.links)
+  for (const num of ['100', '190', '199', '1AF']) assert.ok(linked(num), `${num} links`)
+  for (const num of ['101', '401', '602', '1FF', '203']) assert.ok(!linked(num), `${num} does not`)
+  const [index] = pageDef('100', ctx).render(ctx)
+  const r = index.lines().findIndex(l => /NFL 601/.test(l))
+  assert.equal(index.pageNumberAt(r, index.lines()[r].indexOf('601')), '601')
+  const [welcome] = pageDef('190', ctx).render(ctx)
+  const w = welcome.lines().findIndex(l => /199 is help/.test(l))
+  assert.equal(welcome.pageNumberAt(w, welcome.lines()[w].indexOf('199')), '199', 'a number before a full stop')
+})
+
+test('a live score that stops updating shows its age within minutes, not 45', async () => {
+  const { creditText } = await import('../pages.js')
+  const live = { games: [{ state: 'in', date: NOW - 3600e3, away: {}, home: {} }] }
+  const ctx = (at) => ({ ...ctxWith(), entry: () => ({ data: live, at }) })
+  assert.match(creditText(ctx(NOW - 10 * 60e3), 'sport_nfl').text, /NOT UPDATED SINCE/, 'ten minutes old, mid-game')
+  assert.match(creditText(ctx(NOW - 60e3), 'sport_nfl').text, /^SOURCE: ESPN/, 'a minute old is fresh')
+  const resting = { games: [{ state: 'post', date: NOW - 86400e3, away: {}, home: {} }] }
+  const calm = { ...ctxWith(), entry: () => ({ data: resting, at: NOW - 10 * 60e3 }) }
+  assert.match(creditText(calm, 'sport_nfl').text, /^SOURCE: ESPN/, 'no game on: the resting rule')
 })

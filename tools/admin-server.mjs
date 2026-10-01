@@ -225,7 +225,7 @@ export async function saveEditorial(body) {
 // ---------------------------------------------------------------------
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '': 'text/plain; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
   '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.bdf': 'text/plain; charset=utf-8',
   '.md': 'text/markdown; charset=utf-8', '.gif': 'image/gif', '.mp4': 'video/mp4',
@@ -362,12 +362,21 @@ async function handleApi(req, res, url) {
 // The static allowlist: what the app and the dashboard actually fetch,
 // derived by enumerating their requests. The second copy is servable() in
 // tools/dev-server.py. Change one, change both.
+//
+// 2026-10-01: JSON at the root is named, not matched by extension. Any
+// `.json` used to pass, so a secrets.json, config.local.json or
+// service-account.json dropped in the root was served here and by the dev
+// server, and build-site.mjs (which uses this rule) would have published it.
+// These three are every JSON file the app fetches. LICENSE and NOTICE are
+// named too: src/ is the MIT engine, redistributed, and its licence has to
+// travel with it.
 const STATIC_DIRS = new Set(['fonts', 'src', 'screenshots'])
-const STATIC_TOP_EXT = new Set(['.js', '.json', '.html', '.md', '.ico', '.png', '.jpg', '.svg'])
+const STATIC_TOP_EXT = new Set(['.js', '.html', '.md', '.ico', '.png', '.jpg', '.svg'])
+const STATIC_TOP_NAMES = new Set(['build.json', 'editorial.json', 'markets.json', 'LICENSE', 'NOTICE'])
 export function servable(rel) {
   const parts = rel.split('/')
   if (parts.some((seg) => seg.startsWith('.'))) return false
-  if (parts.length === 1) return STATIC_TOP_EXT.has(path.extname(rel).toLowerCase())
+  if (parts.length === 1) return STATIC_TOP_NAMES.has(rel) || STATIC_TOP_EXT.has(path.extname(rel).toLowerCase())
   if (parts[0] === 'tools') {
     if (parts.length === 2 && parts[1].endsWith('.html')) return true
     return parts.length === 3 && parts[1] === 'lib' && parts[2].endsWith('.mjs')

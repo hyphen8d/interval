@@ -38,11 +38,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # A failed fetch must not stop the deploy: the site goes out without
-      # markets.json and page 401 says it is off air, rather than the whole
-      # service staying on yesterday's build.
+      # A failed fetch must not stop the deploy, and must not delete the
+      # last good closes either. 2026-10-01: Pages replaces the WHOLE site,
+      # so a run that went out without markets.json took the previous one
+      # down with it, and 401 went off air over one bad FRED morning. Now the
+      # fetcher is handed the live copy (--previous): a series that fails is
+      # carried over with its own date, and if none answers the live file is
+      # republished as it was, its `at` unchanged, so 401 says how old it is.
+      # The curl is for a fetcher that died outright; only with neither does
+      # the site go out without one, and 401 says it is off air.
       - name: Fetch market closes
-        run: node tools/fetch-markets.mjs || echo "::warning::market closes could not be fetched"
+        # From GITHUB_REPOSITORY, not github.event.repository: a scheduled
+        # run's event has no repository in it.
+        run: |
+          LIVE="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/markets.json"
+          node tools/fetch-markets.mjs --previous="$LIVE" \
+            || { curl -fsS --max-time 30 -o markets.json "$LIVE" \
+                 && node -e 'const m = JSON.parse(require("fs").readFileSync("markets.json", "utf8")); if (!m.series?.length) process.exit(1)' \
+                 && echo "::warning::market closes could not be fetched; republishing the live markets.json"; } \
+            || { rm -f markets.json; echo "::warning::market closes could not be fetched, and no live copy to keep"; }
       - name: Assemble the site
         run: node tools/build-site.mjs --out=_site
       - uses: actions/upload-pages-artifact@v3

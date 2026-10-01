@@ -22,6 +22,7 @@ const PRESS = {
   leftright: { keys: ['ArrowRight'], on: '200' },
   fastext: { keys: ['F1'] },
   index: { keys: ['i'], on: '302' },
+  help: { keys: ['?'] },
   hold: { keys: ['h'] },
   colour: { keys: ['c'] },
   cycle: { keys: ['n'] },

@@ -26,8 +26,14 @@ const Pic = await import(`./pictures.js?v=${V}`)
 const editorial = (await import(`./editorial.json?v=${V}`, { with: { type: 'json' } })).default
 
 export const STORAGE_KEY = 'interval:state:v1'
-/** How long the set waits for a page whose source has not answered before
- *  it gives up and shows the off-air page, if the source has also failed. */
+/** How long cycling waits for a page whose source has not answered before
+ *  it moves on to the next one (2026-10-01). The constant was declared and
+ *  documented from the start and read by nothing, so a source that never
+ *  answered (a fetch that hangs, rather than fails) stalled the cycle on
+ *  "searching" for good. Fifteen seconds is a dozen carousel loops and a
+ *  slow fetch several times over, and still shorter than the shortest dwell
+ *  (CYCLE_MIN_MS), so a dead source costs about one page's worth of time.
+ *  A page keyed by hand is still searched for forever, as a real set did. */
 export const FEED_WAIT_MS = 15000
 /** How often, while on, the set asks every source whether it is due. */
 export const FEED_POLL_MS = 30000
@@ -122,6 +128,7 @@ const program = {
     this.identHold = false
     this.quiet = false
     this.pendingReload = false
+    this.powerGen = 0
 
     const saved = loadState()
     const q = queryParams()
@@ -210,6 +217,9 @@ const program = {
     this.quiet = quiet
     this.lastKeyAt = perf()
     if (!quiet) { sfx.playPowerOn(); sfx.startHum() }
+    // A focus session that ran out while the set was off would chime "time's
+    // up" the moment it came back (focusTick only runs while on), so
+    // powerDown pauses it; nothing to finish here.
     const p = this.s.crt.params
     // The tube warming: the picture comes up out of black over a second, with
     // a bloom that settles as it does.
@@ -248,9 +258,37 @@ const program = {
     this.hold = false
     this.reveal = false
     this.size = 0
+    this.msg = null
+    // The set forgets its page (2026-10-01), so the next switch-on lands on
+    // the welcome as CLAUDE.md says it always does. It kept page and truth
+    // once, skipBoot saw a page and asked for nothing, and off-on on 101 came
+    // back to 101. A ?page= link is for the switch-on it opened with, not
+    // every one after.
+    this.page = null
+    this.pages = null
+    this.truth = null
+    this.shown = null
+    this.sub = 0
+    this.nextLive = Infinity
+    this.startPage = '190'
+    // The focus timer lives in the set, and the set is off: it pauses where
+    // it is rather than running out unseen and chiming at the next switch-on
+    // (2026-10-01). Running on across other pages is unchanged.
+    const f = this.focus
+    if (f.state === 'run') {
+      f.left = Math.max(0, f.endsAt - Date.now())
+      f.state = f.left > 0 ? 'paused' : 'done'
+    }
     const p = this.s.crt.params
     this.fxTween(p, 'brightness', this.crtBase.brightness * 1.6, 0.05, 260, true)
+    // `always`, so it outlives fxClear -- and so it also outlives a switch-on
+    // inside the 280ms (2026-10-01): it ran on a set that was on again,
+    // painted standby over the warm-up, undid the warm-up's brightness and
+    // bloom, and could reload the page under the viewer. It now does
+    // nothing unless this is still the switch-off that queued it.
+    const gen = ++this.powerGen
     this.fxAfter(280, () => {
+      if (this.power || gen !== this.powerGen) return
       p.brightness = this.crtBase.brightness
       p.bloomAmt = this.crtBase.bloomAmt
       this.drawStandby()
@@ -327,8 +365,34 @@ const program = {
     const def = Pages.pageDef(num, this.ctx())
     if (!def) return { def: null, pages: null }
     let pages = null
-    try { pages = def.render(this.ctx()) } catch (e) { console.error(`page ${num}:`, e) }
+    try {
+      pages = def.render(this.ctx())
+      this.renderFault = null
+    } catch (e) {
+      // A page that throws is off air, and says why (2026-10-01). It was
+      // logged and treated as "not on air yet", so a malformed markets.json
+      // series left the set searching for 401 forever with nothing on the
+      // screen to say so. Logged once per fault, not on every pass: a
+      // moving page re-renders five times a second.
+      const why = String(e?.message || e)
+      if (this.renderFault !== `${num}:${why}`) console.error(`page ${num}:`, e)
+      this.renderFault = `${num}:${why}`
+      pages = [this.faultPage(num, def, why)]
+    }
     return { def, pages: pages && pages.length ? pages : null }
+  },
+
+  /** The off-air page for a page that could not be drawn: pages.js offAir's
+   *  shape and furniture, with the reason being the page, not a source. */
+  faultPage(num, def, why) {
+    const p = new T.Page()
+    Pages.masthead(p, num, String(def.title || num).toUpperCase())
+    p.double(5, 2, 'OFF AIR', T.YELLOW)
+    let r = p.wrap(8, 2, 'The set could not draw this page from what its source sent.', 36, T.WHITE)
+    r = p.wrap(r + 1, 2, `Fault: ${T.clip(why, 100)}`, 36, T.CYAN, 17)
+    p.wrap(r + 1, 2, 'It will come back by itself when the source sends something readable.', 36, T.GREEN)
+    p.fast([['INDEX', '100'], null, null, ['HELP', '199']])
+    return p
   },
 
   tryArrive(now) {
@@ -503,22 +567,40 @@ const program = {
       })
   },
 
+  /** The first stop at or after `index` in `section`, going on through the
+   *  sections after it: { section, index, num }, or null if no section has a
+   *  page to show. A section can be empty (2026-10-01): every league with no
+   *  games this week leaves SPORT with nothing, and the cycle asked for
+   *  pages[0] -- page UNDEFINED -- and searched for it for good. */
+  cycleFind(section, index) {
+    for (let k = 0; k <= Pages.SECTIONS.length; k++) {
+      const s = (section + k) % Pages.SECTIONS.length
+      const pages = this.cyclePages(s)
+      const i = k ? 0 : index
+      if (i < pages.length) return { section: s, index: i, num: pages[i] }
+    }
+    return null
+  },
+
   startCycle() {
     const c = this.cycle
     const here = Pages.sectionOf(this.page)
+    const section = here >= 0 ? here : 0
+    const at = this.cyclePages(section).indexOf(this.page)
+    const stop = at >= 0 ? null : this.cycleFind(section, 0)
+    if (at < 0 && !stop) { this.flash('NO PAGES'); return }
     c.on = true
     c.holdSection = false
-    c.section = here >= 0 ? here : 0
-    const pages = this.cyclePages(c.section)
-    const at = pages.indexOf(this.page)
     if (at >= 0) {
       // Already on a page of this section: give it its time, then move on.
+      c.section = section
       c.index = at
       c.next = perf() + CYCLE_MIN_MS
     } else {
-      c.index = 0
+      c.section = stop.section
+      c.index = stop.index
       c.next = Infinity
-      this.request(pages[0])
+      this.request(stop.num)
     }
     this.flash('CYCLING')
     this.publishFastext()
@@ -536,19 +618,21 @@ const program = {
 
   cycleTick(now) {
     const c = this.cycle
-    if (!c.on || this.want || now < c.next) return
-    let pages = this.cyclePages(c.section)
-    c.index++
-    if (c.index >= pages.length) {
-      c.index = 0
-      if (!c.holdSection) {
-        c.section = (c.section + 1) % Pages.SECTIONS.length
-        pages = this.cyclePages(c.section)
-        announce(Pages.SECTIONS[c.section].name, 'cycle')
-      }
-    }
+    if (!c.on) return
+    // Waiting for the page asked for. A page whose source never answers is
+    // given FEED_WAIT_MS and then passed over; the page before stays up.
+    if (this.want) { if (now - this.wantSince < FEED_WAIT_MS) return }
+    else if (now < c.next) return
+    const from = c.section
+    let stop = this.cycleFind(c.section, c.index + 1)
+    // Holding the section goes round it again, unless it has emptied.
+    if (c.holdSection && stop && stop.section !== c.section) stop = this.cycleFind(c.section, 0)
+    if (!stop) { this.stopCycle(); this.flash('NO PAGES'); return }
+    c.section = stop.section
+    c.index = stop.index
+    if (c.section !== from) announce(Pages.SECTIONS[c.section].name, 'cycle')
     c.next = Infinity
-    this.request(pages[c.index])
+    this.request(stop.num)
   },
 
   // ---------------------------------------------------------------- location
@@ -618,6 +702,7 @@ const program = {
    *  wherever it is touched. */
   click(x, y, W, H) {
     if (!this.power) { sfx.playKeyClick(); this.powerUp(); return 'power' }
+    this.heard()
     const link = this.linkAt(x, y, W, H)
     return this.followLink(link)
   },
@@ -639,6 +724,15 @@ const program = {
   },
 
   // ---------------------------------------------------------------- keys
+  /** The first key or tap on a quiet start (?power=on) is the gesture its
+   *  sound was waiting for. It cleared `quiet` and nothing else, so a set
+   *  switched on by a link never got its whistle and hum (2026-10-01). */
+  heard() {
+    if (!this.quiet) return
+    this.quiet = false
+    sfx.startHum()
+  },
+
   flash(text) { this.msg = { text, until: perf() + HEADER_MSG_MS } },
 
   fastext(i) {
@@ -732,9 +826,9 @@ const program = {
       }
       return
     }
+    this.heard()
     // Any key during the switch-on skips the rest of it -- and then does
     // what it does, except P, which switches off.
-    this.quiet = false
     if (this.boot && lower !== 'p') this.skipBoot()
 
     const handled = this.handleKey(k, lower, e)
@@ -763,7 +857,13 @@ const program = {
       case 'Escape':
       case 'Backspace':
         if (this.entry) { this.entry = ''; this.flash('CLEARED') }
-        else if (this.want && this.page) { this.want = null; this.flash('CANCEL') }
+        else if (this.want && this.page) {
+          // Giving up the search the cycle made stops the cycle (2026-10-01):
+          // it waits on the page it asked for, so clearing the search alone
+          // left it on, waiting for nothing, for good.
+          this.want = null
+          if (this.cycle.on) { this.stopCycle(); this.flash('STOPPED') } else this.flash('CANCEL')
+        }
         else this.flash('READY')
         return true
     }
