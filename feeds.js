@@ -206,14 +206,14 @@ export function parseForecast(j) {
 // notice, which is what check-feeds is for.
 // ---------------------------------------------------------------------------
 
-/** The leagues, as [key, name, ESPN path, page]. */
+/** The leagues, as [key, name, ESPN path, page]. NHL (604), the Premier
+ *  League (605) and college football (606) were dropped 2026-10-01, the
+ *  owner's call: three scoreboards are a sport section you can glance at,
+ *  six were most of a cycle. */
 export const LEAGUES = [
   ['nfl', 'NFL', 'football/nfl', '601'],
   ['nba', 'NBA', 'basketball/nba', '602'],
   ['mlb', 'MLB', 'baseball/mlb', '603'],
-  ['nhl', 'NHL', 'hockey/nhl', '604'],
-  ['epl', 'PREMIER LEAGUE', 'soccer/eng.1', '605'],
-  ['cfb', 'COLLEGE FOOTBALL', 'football/college-football', '606'],
 ]
 export const scoreboardUrl = (path) => `https://site.api.espn.com/apis/site/v2/sports/${path}/scoreboard`
 
@@ -281,16 +281,22 @@ export function parseMarkets(json) {
 }
 
 /**
- * The US cities page (302): Open-Meteo answers several places in one request
+ * The cities page (302): Open-Meteo answers several places in one request
  * when given lists of latitudes and longitudes, as an array in the same
  * order. Needs no location permission, which is the point -- it is the
- * weather page cycling can show everyone.
+ * weather page cycling can show everyone. Twelve US cities, then (2026-10-01,
+ * the owner's ask) twelve world cities for 302's second screen, west to east
+ * round the globe, in the same request: one fetch, one rate limit.
  */
 export const CITIES = [
-  ['NEW YORK', 40.71, -74.01], ['BOSTON', 42.36, -71.06], ['WASHINGTON', 38.91, -77.04],
-  ['MIAMI', 25.76, -80.19], ['ATLANTA', 33.75, -84.39], ['CHICAGO', 41.88, -87.63],
-  ['HOUSTON', 29.76, -95.37], ['DENVER', 39.74, -104.99], ['PHOENIX', 33.45, -112.07],
-  ['LOS ANGELES', 34.05, -118.24], ['SAN FRANCISCO', 37.77, -122.42], ['SEATTLE', 47.61, -122.33],
+  ['NEW YORK', 40.71, -74.01, 'us'], ['BOSTON', 42.36, -71.06, 'us'], ['WASHINGTON', 38.91, -77.04, 'us'],
+  ['MIAMI', 25.76, -80.19, 'us'], ['ATLANTA', 33.75, -84.39, 'us'], ['CHICAGO', 41.88, -87.63, 'us'],
+  ['HOUSTON', 29.76, -95.37, 'us'], ['DENVER', 39.74, -104.99, 'us'], ['PHOENIX', 33.45, -112.07, 'us'],
+  ['LOS ANGELES', 34.05, -118.24, 'us'], ['SAN FRANCISCO', 37.77, -122.42, 'us'], ['SEATTLE', 47.61, -122.33, 'us'],
+  ['MEXICO CITY', 19.43, -99.13, 'world'], ['TORONTO', 43.65, -79.38, 'world'], ['SAO PAULO', -23.55, -46.63, 'world'],
+  ['LONDON', 51.51, -0.13, 'world'], ['PARIS', 48.86, 2.35, 'world'], ['BERLIN', 52.52, 13.40, 'world'],
+  ['CAIRO', 30.04, 31.24, 'world'], ['DUBAI', 25.20, 55.27, 'world'], ['MUMBAI', 19.08, 72.88, 'world'],
+  ['SINGAPORE', 1.35, 103.82, 'world'], ['TOKYO', 35.68, 139.69, 'world'], ['SYDNEY', -33.87, 151.21, 'world'],
 ]
 export function citiesUrl(units) {
   const q = new URLSearchParams({
@@ -307,6 +313,7 @@ export function parseCities(json) {
     units: /F/.test(list[0]?.current_units?.temperature_2m || '') ? 'F' : 'C',
     cities: list.map((c, i) => ({
       name: CITIES[i][0],
+      world: CITIES[i][3] === 'world',
       temp: Math.round(c.current?.temperature_2m),
       code: c.current?.weather_code ?? null,
       hi: Math.round(c.daily?.temperature_2m_max?.[0]),
@@ -404,7 +411,7 @@ export const FEEDS = {
     },
   },
   cities: {
-    label: 'OPEN-METEO', title: 'Open-Meteo: twelve US cities', refreshMs: 30 * MIN,
+    label: 'OPEN-METEO', title: 'Open-Meteo: twelve US and twelve world cities', refreshMs: 30 * MIN,
     url: (env) => citiesUrl(env.units),
     load: async (f, env) => parseCities(await getJSON(f, citiesUrl(env.units))),
   },

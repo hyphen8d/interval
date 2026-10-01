@@ -85,13 +85,14 @@ export const SECTIONS = [
   { name: 'TODAY', pages: [['THIS DAY', '200'], ['BORN TODAY', '201'], ['CLOCK', '202'], ['COMING UP', '203']] },
   // 300 is LOCAL, not TODAY: the index printed TODAY as a section and again
   // as a weather page two rows apart.
-  { name: 'WEATHER', pages: [['LOCAL', '300'], ['5-DAY', '301'], ['US CITIES', '302']] },
+  { name: 'WEATHER', pages: [['LOCAL', '300'], ['5-DAY', '301'], ['CITIES', '302']] },
   { name: 'MONEY', pages: [['MARKETS', '401'], ['YOUR MONEY', '402']] },
   // In page-number order (2026-09-28): SPORT came before PAUSE, and the index
   // read 401, 601, 500 -- which on a teletext index looks like a misprint.
   { name: 'PAUSE', pages: [['BREATHE', '500'], ['A THOUGHT', '501'], ['FOCUS', '502'], ['DECIDE', '503']] },
   // Three to a row on the index (`perRow`), so the short league names.
-  { name: 'SPORT', perRow: 3, pages: [['NFL', '601'], ['NBA', '602'], ['MLB', '603'], ['NHL', '604'], ['EPL', '605'], ['CFB', '606']] },
+  // NHL, EPL and CFB (604-606) dropped 2026-10-01: see feeds.js LEAGUES.
+  { name: 'SPORT', perRow: 3, pages: [['NFL', '601'], ['NBA', '602'], ['MLB', '603']] },
   { name: 'GALLERY', pages: [['PICTURES', '700']] },
 ]
 export const sectionOf = (num) => SECTIONS.findIndex(s => s.pages.some(([, n]) => n === String(num).toUpperCase()))
@@ -299,65 +300,23 @@ const MONTH_NAMES = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JU
  *  as British to the people this is for). */
 const longDate = (ms) => { const d = new Date(ms); return `${LONG_DAYS[d.getDay()]}, ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}` }
 
-/**
- * The NOW line on the index (2026-09-28): what is happening, in one row --
- * the Dow's last move, the temperature (here if the set knows where here
- * is, else New York), and a score (a game in progress, else the latest
- * final). Ceefax's 100 carried a teaser for the same reason: an index that
- * is only a table of contents is a page nobody leaves up. Each item appears
- * only once its source has answered, so the index never waits on a fetch;
- * items that would not fit are dropped whole, never cut.
- */
-export function nowItems(ctx) {
-  const items = []
-  const dow = ctx.entry('markets')?.data?.series?.find(s => s.id === 'DJIA')
-  if (dow && Number.isFinite(dow.prev) && dow.prev) {
-    const pct = (dow.value / dow.prev - 1) * 100
-    items.push([`DOW ${pct >= 0 ? '▲' : '▼'}${Math.abs(pct).toFixed(1)}%`, pct >= 0 ? GREEN : RED])
-  }
-  // A stale copy is no news of NOW (2026-10-01): a game cached "in
-  // progress" last night read as live in the morning. Temperatures and
-  // scores are used only while their feed is fresh, by the credit line's
-  // rule (feeds.js isStale).
-  const fresh = (id) => (isStale(ctx, id) ? null : ctx.entry(id)?.data)
-  const here = fresh('weather')
-  const cities = fresh('cities')
-  if (here?.current && Number.isFinite(here.current.temp)) items.push([`HERE ${here.current.temp}${here.units || 'F'}`, CYAN])
-  else {
-    const ny = cities?.cities?.find(c => c.name === 'NEW YORK')
-    if (ny && Number.isFinite(ny.temp)) items.push([`NYC ${ny.temp}${cities.units || 'F'}`, CYAN])
-  }
-  const games = LEAGUES.flatMap(([key]) => (fresh(`sport_${key}`)?.games || []))
-  const g = games.find(x => x.state === 'in') ||
-    games.filter(x => x.state === 'post').sort((a, b) => (b.date || 0) - (a.date || 0))[0]
-  if (g) items.push([`${g.away.abbr} ${g.away.score} ${g.home.abbr} ${g.home.score}`, g.state === 'in' ? GREEN : WHITE])
-  return items
-}
-
+// The NOW line (the Dow, a temperature, a score on row 3) was removed
+// 2026-10-01, the owner's call: it crowded the masthead, and each figure is
+// a page of its own one key away. The index is the map and nothing else, so
+// it needs no source and never moves.
 page('100', 'Index', {
   links: true,
-  feeds: ['markets', 'cities', ...LEAGUES.map(([key]) => `sport_${key}`)],
-  // Redrawn in place so the NOW line keeps up; the table itself never moves.
-  liveMs: 15000,
   render(ctx) {
     const p = new Page()
     p.band(1, BLUE); p.band(2, BLUE)
     p.double(1, 1, 'INTERVAL', YELLOW, BLUE)
     // INDEX, not the tagline again: the header row already says INTERVAL.
     p.double(1, 33, 'INDEX', WHITE, BLUE)
-    let c = 5
-    const items = nowItems(ctx)
-    if (items.length) p.text(3, 1, 'NOW', YELLOW)
-    for (const [text, colour] of items) {
-      if (c + text.length > COLS - 1) break
-      p.text(3, c, text, colour)
-      c += text.length + 2
-    }
     // Section by section, in page-number order, the name in its own
     // masthead colour and a blank row between sections -- the index is the
     // map cycling follows. Two to a row (ten-column label, then its number),
     // or three for a section of short names (sport).
-    let r = 5
+    let r = 4
     for (const sec of SECTIONS) {
       const m = MAGAZINES[sec.pages[0][1][0]]
       p.text(r, 1, sec.name, m.band === BLUE ? CYAN : m.band === WHITE ? WHITE : m.band)
@@ -772,30 +731,36 @@ page('301', 'Weather: five days', {
 })
 
 /** Twelve US cities at once (2026-09-28): the weather page that needs no
- *  location, so cycling can show it to everyone. */
-page('302', 'Weather: US cities', {
+ *  location, so cycling can show it to everyone. A second screen of twelve
+ *  world cities, London to Tokyo, was added 2026-10-01 (the owner's ask);
+ *  both come from one request (feeds.js CITIES). */
+page('302', 'Weather: cities', {
   feeds: ['cities'],
   liveMs: 220,
   render(ctx) {
-    return gate(ctx, '302', 'US CITIES', ['cities'], ({ cities }) => {
-      const p = new Page()
-      masthead(p, '302', 'US CITIES', { right: 'RIGHT NOW' })
-      p.text(BODY_TOP, 1, 'CITY', CYAN); p.text(BODY_TOP, 16, 'NOW', CYAN); p.text(BODY_TOP, 22, 'SKY', CYAN); p.text(BODY_TOP, 32, 'HI/LO', CYAN)
-      cities.cities.forEach((c, i) => {
-        const r = BODY_TOP + 2 + i
-        const hot = cities.units === 'F' ? c.temp >= 85 : c.temp >= 29
-        const cold = cities.units === 'F' ? c.temp <= 40 : c.temp <= 4
-        p.text(r, 1, c.name, i % 2 ? WHITE : YELLOW)
-        p.text(r, 15, temp(c.temp, cities.units).padStart(4), hot ? RED : cold ? CYAN : WHITE)
-        p.text(r, 22, clip(wmoWords(c.code)[2], 5), GREEN)
-        // Where it is raining, snowing or storming, the row shows it.
-        const kind = Pic.weatherKind(c.code)
-        if (kind) for (const k of [0, 1]) p.mosaic(r, 27 + k, Pic.weatherCell(kind, ctx.now, k), kind === 'snow' ? WHITE : kind === 'storm' ? YELLOW : CYAN)
-        p.text(r, 30, `${temp(c.hi, '')}/${temp(c.lo, '')}`.padStart(8), WHITE)
+    return gate(ctx, '302', 'CITIES', ['cities'], ({ cities }) => {
+      const screens = [['US CITIES', cities.cities.filter(c => !c.world)], ['WORLD CITIES', cities.cities.filter(c => c.world)]]
+        .filter(([, list]) => list.length)
+      return screens.map(([title, list], sub) => {
+        const p = new Page()
+        masthead(p, '302', title, { sub, subs: screens.length, right: 'RIGHT NOW' })
+        p.text(BODY_TOP, 1, 'CITY', CYAN); p.text(BODY_TOP, 16, 'NOW', CYAN); p.text(BODY_TOP, 22, 'SKY', CYAN); p.text(BODY_TOP, 32, 'HI/LO', CYAN)
+        list.slice(0, 12).forEach((c, i) => {
+          const r = BODY_TOP + 2 + i
+          const hot = cities.units === 'F' ? c.temp >= 85 : c.temp >= 29
+          const cold = cities.units === 'F' ? c.temp <= 40 : c.temp <= 4
+          p.text(r, 1, clip(c.name, 13), i % 2 ? WHITE : YELLOW)
+          p.text(r, 15, temp(c.temp, cities.units).padStart(4), hot ? RED : cold ? CYAN : WHITE)
+          p.text(r, 22, clip(wmoWords(c.code)[2], 5), GREEN)
+          // Where it is raining, snowing or storming, the row shows it.
+          const kind = Pic.weatherKind(c.code)
+          if (kind) for (const k of [0, 1]) p.mosaic(r, 27 + k, Pic.weatherCell(kind, ctx.now, k), kind === 'snow' ? WHITE : kind === 'storm' ? YELLOW : CYAN)
+          p.text(r, 30, `${temp(c.hi, '')}/${temp(c.lo, '')}`.padStart(8), WHITE)
+        })
+        creditLine(p, ctx, 'cities')
+        p.fast([['LOCAL', '300'], ['5-DAY', '301'], ['NEWS', '101'], ['INDEX', '100']])
+        return p
       })
-      creditLine(p, ctx, 'cities')
-      p.fast([['LOCAL', '300'], ['5-DAY', '301'], ['NEWS', '101'], ['INDEX', '100']])
-      return [p]
     })
   },
 })

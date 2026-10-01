@@ -128,48 +128,6 @@
       "strikes": 0,
       "lastOk": "2026-09-29T03:25:41.697Z"
     },
-    "sport_nhl": {
-      "id": "sport_nhl",
-      "title": "ESPN: NHL scoreboard",
-      "checkedAt": "2026-09-29T03:25:41.746Z",
-      "items": 1,
-      "detail": "5 games this week",
-      "ok": true,
-      "ms": 86,
-      "requests": 1,
-      "status": 200,
-      "cors": true,
-      "strikes": 0,
-      "lastOk": "2026-09-29T03:25:41.746Z"
-    },
-    "sport_epl": {
-      "id": "sport_epl",
-      "title": "ESPN: PREMIER LEAGUE scoreboard",
-      "checkedAt": "2026-09-29T03:25:41.832Z",
-      "items": 1,
-      "detail": "4 games this week",
-      "ok": true,
-      "ms": 43,
-      "requests": 1,
-      "status": 200,
-      "cors": true,
-      "strikes": 0,
-      "lastOk": "2026-09-29T03:25:41.832Z"
-    },
-    "sport_cfb": {
-      "id": "sport_cfb",
-      "title": "ESPN: COLLEGE FOOTBALL scoreboard",
-      "checkedAt": "2026-09-29T03:25:41.875Z",
-      "items": 1,
-      "detail": "16 games this week",
-      "ok": true,
-      "ms": 52,
-      "requests": 1,
-      "status": 200,
-      "cors": true,
-      "strikes": 0,
-      "lastOk": "2026-09-29T03:25:41.875Z"
-    },
     "launches": {
       "id": "launches",
       "title": "Launch Library: upcoming launches",

@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import * as F from '../feeds.js'
-import { PAGES, pageDef, pageOrder, INDEX, MAGAZINES, SECTIONS, nowItems } from '../pages.js'
+import { PAGES, pageDef, pageOrder, INDEX, MAGAZINES, SECTIONS } from '../pages.js'
 import { fixtureData } from '../tools/lib/fixture-ctx.mjs'
 import { KEYS } from '../constants.js'
 import { validPage } from '../carousel.js'
@@ -199,11 +199,17 @@ test('news still shows the top stories when Current events is down', () => {
   assert.match(subs[0].lines().join(' '), /Brisbane Lions/)
 })
 
-test('US cities: twelve cities on one screen, no location needed', () => {
+test('cities: twelve US cities, then twelve world cities, no location needed', () => {
   const ctx = ctxWith(allData(), { locationState: 'unknown' })
-  const text = pageDef('302', ctx).render(ctx)[0].lines().join('\n')
-  assert.match(text, /NEW YORK\s+\d+F/)
-  assert.match(text, /SEATTLE/)
+  const [us, world, ...more] = pageDef('302', ctx).render(ctx).map(p => p.lines().join('\n'))
+  assert.equal(more.length, 0, 'two screens')
+  assert.match(us, /US CITIES/)
+  assert.match(us, /NEW YORK\s+\d+F/)
+  assert.match(us, /SEATTLE/)
+  assert.ok(!/LONDON/.test(us))
+  assert.match(world, /WORLD CITIES/)
+  for (const name of ['LONDON', 'TOKYO', 'SYDNEY', 'MEXICO CITY']) assert.match(world, new RegExp(`${name}\\s+-?\\d+F`), name)
+  assert.ok(!/NEW YORK/.test(world))
 })
 
 test('on this day and born today are six screens, not eighteen', () => {
@@ -257,21 +263,21 @@ test('coming up draws from its sources, and a gallery draws only its current pic
   assert.equal(a[6], b[6], 'the others hold still')
 })
 
-test('the index: sections in page-number order, a NOW line from whatever has answered', () => {
+test('the index: sections in page-number order, and no NOW line', () => {
   const firstNum = (s) => parseInt(s.pages[0][1], 16)
   const order = SECTIONS.map(firstNum)
   assert.deepEqual(order, [...order].sort((a, b) => a - b), 'the index never reads 401, 601, 500')
   const ctx = ctxWith()
   const text = pageDef('100', ctx).render(ctx)[0].lines()
-  assert.match(text[3], /^ NOW DOW [▲▼]\d+\.\d%\s+(HERE|NYC) \d+[FC]\s+[A-Z]+ \d+ [A-Z]+ \d+/)
-  assert.ok(text[3].length <= 40)
-  assert.match(text.join('\n'), /SPORT\s+NFL 601\s+NBA 602\s+MLB 603/)
+  assert.ok(!text.join('\n').includes('NOW'), 'the NOW line was removed 2026-10-01')
+  assert.match(text[4], /^ NEWS/, 'the sections start under the masthead')
+  assert.match(text.join('\n'), /SPORT\s+NFL 601\s+NBA 602\s+MLB 603\s*$/m)
+  assert.ok(!/60[456]/.test(text.join('\n')), 'no NHL, EPL or CFB')
+  assert.match(text.join('\n'), /CITIES\s+302/)
   assert.ok(!/\bTODAY\s+300/.test(text.join('\n')), '300 is LOCAL, not a second TODAY')
-  // Nothing has answered: no NOW line, and the index draws anyway.
+  // It needs no source, so it draws with nothing answered.
   const bare = ctxWith({})
-  const none = pageDef('100', bare).render(bare)
-  assert.ok(none && !none[0].lines()[3].includes('NOW'))
-  assert.equal(nowItems(bare).length, 0)
+  assert.deepEqual(pageDef('100', bare).render(bare)[0].lines(), text)
 })
 
 // -- 2026-10-01: the review's findings, each held ----------------------------
@@ -409,19 +415,6 @@ test('the hidden game wears its own magazine, not sport\'s', () => {
   const ctx = ctxWith()
   const [p] = pageDef('1FF', ctx).render(ctx)
   assert.equal(p.cells[1][0].bg, MAGAZINES[1].band)
-})
-
-test('the NOW line leaves out a score or a temperature from a stale copy', () => {
-  const data = allData()
-  const g = { ...data.sport_nfl.games[0], state: 'in', detail: 'Q2 1:00' }
-  data.sport_nfl = { ...data.sport_nfl, games: [g] }
-  const fresh = ctxWith(data)
-  assert.ok(nowItems(fresh).some(([t]) => t.startsWith(`${g.away.abbr} `)), 'a fresh live game is shown')
-  const stale = { ...fresh, entry: (id) => ({ ...fresh.entry(id), at: id === 'markets' ? NOW - 60000 : NOW - 2 * 864e5 }) }
-  const items = nowItems(stale).map(([t]) => t)
-  assert.ok(items.some(t => t.startsWith('DOW')))
-  assert.ok(!items.some(t => /^(HERE|NYC) /.test(t)), 'no stale temperature')
-  assert.equal(items.length, 1, `no stale score: ${items}`)
 })
 
 test('only pages that print page references link them: not "S&P 500", not a score', () => {

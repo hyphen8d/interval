@@ -11,10 +11,10 @@ Seven sections, every page readable at a glance:
 | --- | --- |
 | **News** | 101 headlines, 102 did you know (tech, games, hacking) |
 | **Today** | 200 on this day, 201 born today, 202 the clock, 203 coming up (the weekend, the next holiday, the next launch) |
-| **Weather** | 300 local, with sunrise and sunset, 301 five days (both for where you are), 302 twelve US cities |
+| **Weather** | 300 local, with sunrise and sunset, 301 five days (both for where you are), 302 twelve US cities, then twelve around the world |
 | **Money** | 401 world markets at the close, 402 your money (gas, mortgages, inflation, rates, jobs) |
 | **Pause** | 500 breathe, 501 a thought for today, 502 a focus timer, 503 decide for me (a d20 and a coin) |
-| **Sport** | 601 NFL, 602 NBA, 603 MLB, 604 NHL, 605 Premier League, 606 college football |
+| **Sport** | 601 NFL, 602 NBA, 603 MLB |
 | **Gallery** | 700: moonrise, a test card, the sea, a city at night, an aquarium, a lighthouse, the northern lights and a night train |
 
 Press **N** and the set turns its own pages, section by section. **H** keeps

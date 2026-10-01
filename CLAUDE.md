@@ -113,7 +113,7 @@ rebuilt.
   interference bursts, or `?rx=`.
 - **The seven sections** are `pages.js` `SECTIONS`: news (101-102), today
   (200-203), weather (300-302), money (401-402), pause (500-503), sport
-  (601-606) and gallery (700, eight pictures), each a single magazine, in
+  (601-603) and gallery (700, eight pictures), each a single magazine, in
   page-number order (the index once read 401, 601, 500). The index is drawn
   from the same list, and so is cycling.
 - **Cycling is manual.** N starts it; the set never cycles by itself (a test
@@ -161,10 +161,9 @@ rebuilt.
   around the one-ink-one-paper cell: the lighthouse's bands are whole cell
   rows, and the night train's black body is the cells' paper (`trainSpan`
   feeds the bgFor), because windows, body and valley are three colours.
-- **The index (100)** leads with a NOW line (`nowItems`): the Dow's move,
-  the temperature (here, else New York) and a score, each only once its
-  source has answered, and dropped whole if it won't fit; `liveMs` keeps it
-  current. Sections have a blank row between them; sport is three to a row
+- **The index (100)** is the map and nothing else: it needs no source and
+  never moves. Its NOW line (the Dow, a temperature, a score) was removed
+  2026-10-01 to clear space. Sections have a blank row between them; sport is three to a row
   (`perRow`). The masthead says INDEX, since the header already says
   INTERVAL. Any change to SECTIONS shows up here, so look at the page after.
 - **Pages you hold** (2026-09-28, the owner's ask: "pages people hold
@@ -184,7 +183,8 @@ rebuilt.
   line (`sunInfo`). **402 Your money** is gas, the 30-year mortgage,
   inflation, the Fed rate and unemployment, from the same `markets.json`
   (`household`); up is red on every row, since up is bad news for all five.
-- **Sport** (601-606: NFL, NBA, MLB, NHL, Premier League, college football)
+- **Sport** (601-603: NFL, NBA, MLB; NHL, the Premier League and college
+  football were dropped 2026-10-01, and their numbers are free)
   is one scoreboard page per league from ESPN's `site.api.espn.com`, which is
   **unofficial and undocumented** and could change without notice; the
   capture is the only spec (`tests/fixtures/espn-*.json`). A scoreboard with
@@ -200,8 +200,10 @@ rebuilt.
   that reason, so a headless OFF AIR is the capture tool, not the site.
 - **Trimmed 2026-09-28:** the sky, space weather, earthquakes, currencies and
   the quiz pages. The quiz content stays in `editorial.json`. On this day and
-  Born today are six screens each (`pickEvenly`). 302 is twelve US cities in
-  one Open-Meteo request, so the weather section cycles without a location.
+  Born today are six screens each (`pickEvenly`). 302 is twelve US cities, then
+  (subpage 2, 2026-10-01) twelve world cities, London to Tokyo, all in one
+  Open-Meteo request (`CITIES`, `world` flag), so the weather section cycles
+  without a location.
 - **The set lands on 190, the welcome,** every time it's switched on (not the
   last page), off and on again included: `powerDown` forgets the page.
   `?page=` opens where it points on the first switch-on only.

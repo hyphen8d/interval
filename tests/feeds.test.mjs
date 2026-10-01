@@ -137,14 +137,17 @@ test('FRED CSV: the last two real values, skipping holidays', async () => {
   assert.throws(() => parseFredCsv('observation_date,DJIA\n'))
 })
 
-test('US cities: twelve, in the order asked, units from the answer', () => {
+test('cities: twelve US then twelve world, in the order asked, units from the answer', () => {
   const c = parseCities(fx('open-meteo-cities.json'))
-  assert.equal(c.cities.length, 12)
+  assert.equal(c.cities.length, 24)
   assert.equal(c.cities[0].name, 'NEW YORK')
   assert.equal(c.cities[11].name, 'SEATTLE')
+  assert.deepEqual(c.cities.map(x => x.world), [...Array(12).fill(false), ...Array(12).fill(true)])
+  assert.equal(c.cities.find(x => x.name === 'LONDON')?.world, true)
+  assert.equal(c.cities.at(-1).name, 'SYDNEY')
   assert.equal(c.units, 'F')
   assert.ok(c.cities.every(x => Number.isFinite(x.temp) && Number.isFinite(x.hi)))
-  assert.throws(() => parseCities([{}]), /asked for 12/)
+  assert.throws(() => parseCities([{}]), /asked for 24/)
 })
 
 test('scoreboards: both teams, scores, and where the game is', async () => {
