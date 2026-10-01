@@ -381,3 +381,218 @@ export function coinPixels(spin = 0) {
     return d < 1 ? (d > 0.62 ? 'Y' : 'W') : null
   })
 }
+
+// ---------------------------------------------------------------------------
+// 2026-10-01: more of the same. The owner liked the rain, the launch arc and
+// the candle, and asked where else they could go. What those three share is
+// that the picture IS the data -- it is raining, a launch is coming, a
+// thought is being kept company -- so each of these draws something the page
+// already says, and moves no faster than the candle does.
+// ---------------------------------------------------------------------------
+
+/** Two cells of mosaic (4x3 pixels) from a pixel test: [bits0, bits1]. */
+function twoCells(on) {
+  const out = [0, 0]
+  for (let c = 0; c < 2; c++) for (let py = 0; py < 3; py++) for (let px = 0; px < 2; px++) {
+    if (on(c * 2 + px, py)) out[c] |= 1 << (py * 2 + px)
+  }
+  return out
+}
+
+/** Which sky a WMO code is, for the two moving cells on a cities row: the
+ *  falling kinds (weatherKind), else sun or star, part, cloud or fog. Only
+ *  the falling kinds moved at first, so a clear day sat still beside a
+ *  drizzle that fell; now every row has weather in it. */
+export function skyKind(code, isDay = true) {
+  const k = weatherKind(code)
+  if (k) return k
+  if (code === 0 || code === 1) return isDay ? 'sun' : 'star'
+  if (code === 2) return isDay ? 'part' : 'partnight'
+  if (code === 3) return 'cloud'
+  if (code === 45 || code === 48) return 'fog'
+  return null
+}
+
+/** The two cells of a sky at time `ms`, as [[bits, ink], [bits, ink]] --
+ *  an ink per cell, since a cell holds one. Slow: the sun's rays come and
+ *  go every 1.1s, a cloud moves a pixel every 0.9s, a star twinkles. */
+export function skyCells(kind, ms) {
+  const both = (bits, ink) => bits.map(b => [b, ink])
+  if (kind === 'rain' || kind === 'snow' || kind === 'storm') {
+    const ink = kind === 'snow' ? 'W' : kind === 'storm' ? 'Y' : 'C'
+    return [0, 1].map(col => [weatherCell(kind, ms, col), ink])
+  }
+  // Nothing on a cell's top pixel row (2026-10-01, seen on the tube):
+  // three sunny cities in a row joined into one yellow bar down the column.
+  // With the top row dark, a row's sky always stands apart from the next.
+  const f = Math.floor(ms / 1100)
+  const sun = (x, y) => y >= 1 && (x === 1 || x === 2 || (f % 2 === 1 && y === 1 && (x === 0 || x === 3)))
+  const twinkle = hash3(Math.floor(ms / 700), 4, 11) > 0.55
+  // A pixel in from the left edge: CLEAR is the one five-letter sky word,
+  // and a star's left arm touched its R.
+  const star = (x, y) => (x === 2 && y === 1) || (twinkle && ((x === 2 && y === 2) || (y === 1 && (x === 1 || x === 3))))
+  const small = (x, y) => x === 1 && (y === 1 || (twinkle && y === 2))
+  if (kind === 'sun') return both(twoCells(sun), 'Y')
+  if (kind === 'star') return both(twoCells(star), 'W')
+  if (kind === 'cloud') {
+    // Back and forth across the two cells, never out of them: wrapping
+    // round, it left the row empty a frame in seven and read as missing.
+    const s = [-1, 0, 1, 2, 1, 0][Math.floor(ms / 900) % 6]
+    return both(twoCells((x, y) => (y === 2 && x >= s && x <= s + 2) || (y === 1 && x >= s + 1 && x <= s + 2)), 'W')
+  }
+  if (kind === 'part' || kind === 'partnight') {
+    // The sun (or a star) in the first cell, a cloud puffing in the second.
+    const [a] = twoCells(kind === 'part' ? (x, y) => y >= 1 && (x === 1 || (f % 2 === 1 && x === 0 && y === 1)) : small)
+    const puff = Math.floor(ms / 1500) % 2
+    const [, b] = twoCells((x, y) => x >= 2 && (y === 2 || (y === 1 && x === 2 + puff)))
+    return [[a, kind === 'part' ? 'Y' : 'W'], [b, 'W']]
+  }
+  if (kind === 'fog') {
+    const g = Math.floor(ms / 800)
+    return both(twoCells((x, y) => y >= 1 && (x + (y === 1 ? g : -g) + 12) % 3 !== 0), 'W')
+  }
+  return [[0, 'W'], [0, 'W']]
+}
+
+/** A birthday cake for Born today (201), 28x18 pixels: three candles with
+ *  the 501 candle's flame in small, white icing, a magenta cake. Each part
+ *  is whole cell rows -- flames, candles, icing, cake -- so no cell has to
+ *  choose between two colours. */
+export const CAKE_CANDLES = [7, 14, 21]
+export function cakePixels(ms) {
+  const k = Math.floor(ms / 150)
+  return pixels(28, 18, (x, y) => {
+    if (y >= 12) return x >= 1 && x <= 26 ? 'M' : null
+    if (y >= 9) return x >= 1 && x <= 26 && (y < 11 || x % 4 < 2) ? 'W' : null
+    for (const [i, c] of CAKE_CANDLES.entries()) {
+      if (y >= 6) { if (x === c - 1 || x === c) return 'C'; continue }
+      const tall = 3.6 + hash3(k, i, 3) * 1.6
+      const lean = (hash3(k, i, 5) - 0.5) * 1.2
+      const cy = 5 - y
+      if (cy > tall) continue
+      const u = (cy + 0.5) / tall
+      const half = 1.4 * Math.sin(Math.PI * Math.min(1, u * 1.25)) + 0.15
+      if (Math.abs(x + 0.5 - (c + lean * u)) < half) return 'Y'
+    }
+    return null
+  })
+}
+
+/** The sun's path across today for 300, 76x9 pixels (rows 19-21): a dotted
+ *  arc from sunrise to sunset with the sun where it is now (`frac` 0..1 of
+ *  the daylight gone), glinting. After dark the arc is fainter and the moon
+ *  crosses it instead (`frac` of the night gone), under a few stars. The
+ *  launch arc on 203 is the model: the path is the thing. */
+export function sunArcPixels(frac, isDay, ms) {
+  const W = 76, H = 9
+  const at = (s) => [2 + 71 * s, 8 - 7 * Math.sin(Math.PI * s)]
+  const [bx, by] = at(Math.min(1, Math.max(0, frac)))
+  const glint = Math.floor(ms / 1000) % 2
+  const STARS = [[6, 1], [12, 3], [17, 0], [58, 1], [64, 3], [70, 0]]
+  return pixels(W, H, (x, y) => {
+    const dx = x + 0.5 - bx, dy = y + 0.5 - by
+    if (isDay) {
+      if (Math.abs(dx) < 1.6 && Math.abs(dy) < 1.6) return 'Y'
+      if (glint && ((Math.abs(dx) < 0.6 && Math.abs(dy) < 2.6) || (Math.abs(dy) < 0.6 && Math.abs(dx) < 2.6))) return 'Y'
+    } else {
+      if (dx * dx + dy * dy < 2.4) return 'W'
+      for (const [i, [sx, sy]] of STARS.entries()) if (x === sx && y === sy && hash3(Math.floor(ms / 800), i, 7) > 0.35) return 'W'
+    }
+    for (let i = 0; i <= 60; i++) {
+      const [px, py] = at(i / 60)
+      if (Math.round(px - 0.5) === x && Math.round(py - 0.5) === y) return i % (isDay ? 3 : 6) === 0 ? 'C' : null
+    }
+    return null
+  })
+}
+
+/** An hourglass for the focus timer (502), 12x24 pixels: caps top and
+ *  bottom, a post each side, and the sand -- `frac` of it still in the top
+ *  bulb -- with a thin stream falling while it runs. The glass itself is not
+ *  drawn: its edge would share cells with the sand, and the sand's shape
+ *  says where the glass is. */
+export function hourglassPixels(frac, running, ms) {
+  const hw = (y) => (y <= 10 ? 1 + (10 - y) * 0.45 : 1 + (y - 13) * 0.45)
+  const inside = (x, y) => Math.abs(x + 0.5 - 6) < hw(y)
+  const rows = (ys) => ys.map(y => [...Array(12).keys()].filter(x => inside(x, y)))
+  const top = rows([10, 9, 8, 7, 6, 5, 4, 3]), bottom = rows([20, 19, 18, 17, 16, 15, 14, 13])
+  const cap = top.reduce((n, r) => n + r.length, 0)
+  const fill = (bulb, ys, n) => {
+    const on = new Set()
+    bulb.forEach((xs, i) => {
+      // The middle of a row fills first, so a part-filled row is a mound.
+      const order = xs.slice().sort((a, b) => Math.abs(a + 0.5 - 6) - Math.abs(b + 0.5 - 6))
+      for (const x of order) if (n-- > 0) on.add(`${x},${ys[i]}`)
+    })
+    return on
+  }
+  const f = Math.min(1, Math.max(0, frac))
+  const sandTop = fill(top, [10, 9, 8, 7, 6, 5, 4, 3], Math.round(f * cap))
+  const sandBottom = fill(bottom, [20, 19, 18, 17, 16, 15, 14, 13], Math.round((1 - f) * cap))
+  const pileTop = Math.min(21, ...[...sandBottom].map(k => +k.split(',')[1]))
+  const step = Math.floor(ms / 150)
+  return pixels(12, 24, (x, y) => {
+    if (y <= 2 || y >= 21) return 'W'
+    if (x === 0 || x === 11) return 'C'
+    if (sandTop.has(`${x},${y}`) || sandBottom.has(`${x},${y}`)) return 'S'
+    if (running && f > 0 && f < 1 && x === 5 && y >= 11 && y < pileTop && (y + step) % 2 === 0) return 'S'
+    return null
+  })
+}
+
+/** The world for the clock (202), 76x9 pixels, west to east from 180W:
+ *  land as rough longitude spans per band of latitude (63N down to 49S, 14
+ *  degrees a row). Coarse on purpose: at this size a coastline is a guess,
+ *  and the shapes only have to read as the continents. */
+const WORLD = [
+  [[-165, -60], [-50, -20], [5, 180]],
+  [[-125, -55], [-5, 140]],
+  [[-120, -77], [-10, 120], [130, 140]],
+  [[-105, -87], [-17, 58], [70, 88], [95, 110]],
+  [[-77, -55], [-12, 48], [98, 125]],
+  [[-80, -35], [12, 40], [105, 140]],
+  [[-70, -40], [14, 35], [44, 50], [114, 150]],
+  [[-72, -57], [18, 28], [116, 150], [172, 178]],
+  [[-75, -66]],
+]
+export const WORLD_W = 76
+export const worldLon = (x) => -180 + (x + 0.5) * 360 / WORLD_W
+/** The longitude the sun is over at `ms` (noon there), ignoring the
+ *  equation of time: a cell is 4.7 degrees, about nineteen minutes. */
+export const sunLon = (ms) => { const d = new Date(ms); return ((12 - (d.getUTCHours() + d.getUTCMinutes() / 60)) * 15 + 540) % 360 - 180 }
+/** Whether it is day at longitude `lon` (degrees) at `ms`. */
+export const dayAt = (lon, ms) => Math.cos((lon - sunLon(ms)) * Math.PI / 180) > 0
+/** The map at `ms`: land 'G' in daylight, 'B' at night, decided per CELL
+ *  column (two pixels), so a cell never holds day and night land at once. */
+export function worldPixels(ms) {
+  return pixels(WORLD_W, WORLD.length, (x, y) => {
+    const lon = worldLon(x)
+    if (!WORLD[y].some(([a, b]) => lon >= a && lon <= b)) return null
+    return dayAt(worldLon(x - (x % 2) + 0.5), ms) ? 'G' : 'B'
+  })
+}
+
+/** A windmill, 20x15 pixels, its sails turning once every sixteen seconds:
+ *  the interval picture (2026-10-01). The set is called INTERVAL after the
+ *  films the BBC ran between programmes -- the potter's wheel, the windmill
+ *  -- and an off-air page is exactly that: a gap with something to look at. */
+export function windmillPixels(ms) {
+  const hx = 10, hy = 5
+  // In steps of 15 degrees, two-thirds of a second each (still a turn
+  // every sixteen seconds). Turned smoothly, the one-pixel sails changed
+  // two-thirds of their pixels at every quarter-second redraw: a shimmer,
+  // not a windmill. Stepped, each position holds, like clockwork.
+  const turn = Math.floor(ms / (16000 / 24)) * (2 * Math.PI / 24)
+  return pixels(20, 15, (x, y) => {
+    const dx = (x + 0.5 - hx) / 1.24, dy = y + 0.5 - hy
+    for (let k = 0; k < 4; k++) {
+      const a = turn + k * Math.PI / 2
+      const along = dx * Math.cos(a) + dy * Math.sin(a)
+      const across = -dx * Math.sin(a) + dy * Math.cos(a)
+      if (along > 0.6 && along < 5.2 && across > -0.5 && across < (along > 2 ? 1.3 : 0.5)) return 'Y'
+    }
+    if (y === 14) return 'G'
+    if (y >= 6 && Math.abs(x + 0.5 - hx) < 1.2 + (y - 6) * 0.3) return 'W'
+    return null
+  })
+}

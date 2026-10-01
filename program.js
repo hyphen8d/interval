@@ -388,6 +388,7 @@ const program = {
     const p = new T.Page()
     Pages.masthead(p, num, String(def.title || num).toUpperCase())
     p.double(5, 2, 'OFF AIR', T.YELLOW)
+    Pages.intervalPicture(p, Date.now())
     let r = p.wrap(8, 2, 'The set could not draw this page from what its source sent.', 36, T.WHITE)
     r = p.wrap(r + 1, 2, `Fault: ${T.clip(why, 100)}`, 36, T.CYAN, 17)
     p.wrap(r + 1, 2, 'It will come back by itself when the source sends something readable.', 36, T.GREEN)
@@ -413,7 +414,7 @@ const program = {
     // version followed, opened a twelve-fact page at fact seven.
     this.subEpoch = Date.now()
     this.sub = 0
-    this.nextLive = def.liveMs ? now + def.liveMs : Infinity
+    this.nextLive = this.liveMsOf(def, pages[0]) ? now + this.liveMsOf(def, pages[0]) : Infinity
     if (this.cycle.on) this.cycle.next = now + this.cycleDwell(def, pages.length)
     this.reveal = false
     this.size = 0
@@ -460,15 +461,23 @@ const program = {
     this.sub = Math.min(want, pages.length - 1)
     this.setTruth(pages[this.sub], turned)
     if (turned) this.announcePage(def)
+    // A page that went off air on this pass (or came back) may move when
+    // it did not, or stop: the off-air page's windmill turns.
+    if (this.nextLive === Infinity && this.liveMsOf(def, this.truth)) this.nextLive = now + this.liveMsOf(def, this.truth)
   },
+
+  /** How often a page is redrawn in place: its definition's liveMs, or the
+   *  drawn page's own (2026-10-01) -- the off-air and fault pages carry the
+   *  interval picture whatever page they stand in for. */
+  liveMsOf(def, page) { return def?.liveMs || page?.liveMs || 0 },
 
   /** A page that moves (liveMs: the breathing circle, the population
    *  count) is re-drawn in place between transmissions, without the
    *  reception pass -- it is the set animating, not the signal arriving. */
   liveRender(now) {
     const def = Pages.pageDef(this.page, this.ctx())
-    if (!def?.liveMs) { this.nextLive = Infinity; return }
-    this.nextLive = now + def.liveMs
+    if (!this.liveMsOf(def, this.truth)) { this.nextLive = Infinity; return }
+    this.nextLive = now + this.liveMsOf(def, this.truth)
     // A live page keeps its own sources fresh while it is up -- a live
     // scoreboard every minute, not at the set's thirty-second round. The cache holds each
     // to its own refresh period, so asking every tick costs nothing.

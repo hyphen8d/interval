@@ -138,6 +138,9 @@ export class Page {
      *  pages.js turns it off for every page drawn from data (see
      *  pageNumberAt). */
     this.links = true
+    /** Redraw this page in place this often (ms), whatever page it stands
+     *  for: the off-air page's windmill (2026-10-01). 0 for still. */
+    this.liveMs = 0
   }
 
   cell(r, c) {
@@ -341,6 +344,7 @@ export class Page {
     p.fastext = this.fastext.slice()
     p.issues = this.issues.slice()
     p.links = this.links
+    p.liveMs = this.liveMs
     return p
   }
 }

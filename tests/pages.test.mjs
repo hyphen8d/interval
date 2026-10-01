@@ -440,3 +440,83 @@ test('a live score that stops updating shows its age within minutes, not 45', as
   const calm = { ...ctxWith(), entry: () => ({ data: resting, at: NOW - 10 * 60e3 }) }
   assert.match(creditText(calm, 'sport_nfl').text, /^SOURCE: ESPN/, 'no game on: the resting rule')
 })
+
+// -- 2026-10-01: the moving pictures, each on its page ------------------------
+
+const inksIn = (p, rows, cols = [0, 39]) => {
+  const out = new Set()
+  for (const r of rows) for (let c = cols[0]; c <= cols[1]; c++) { const x = p.cells[r][c]; if (x.mos > 0) out.add(x.fg) }
+  return out
+}
+const at = (h, m = 0) => new Date(2026, 8, 28, h, m).getTime()
+const ctxAt = (ms, data, env) => ({ ...ctxWith(data, env), now: ms, date: new Date(ms) })
+
+test('300: the sun on its arc by day, the moon across it at night', () => {
+  const day = pageDef('300', ctxAt(at(13))).render(ctxAt(at(13)))[0]
+  assert.ok(inksIn(day, [19, 20, 21]).has(3), 'a yellow sun on rows 19-21 at 1pm')
+  const night = pageDef('300', ctxAt(at(23))).render(ctxAt(at(23)))[0]
+  assert.ok(!inksIn(night, [19, 20, 21]).has(3), 'no sun at 11pm')
+  assert.ok(inksIn(night, [19, 20, 21]).has(7), 'a white moon')
+  assert.match(night.lines()[22], /CHANCE OF RAIN/, 'the key line is untouched')
+})
+
+test('302: a clear night is a star and says CLEAR, not SUN', () => {
+  const data = allData()
+  data.cities = { ...data.cities, cities: data.cities.cities.map((c, i) => (i === 0 ? { ...c, code: 0, isDay: false } : c)) }
+  const p = pageDef('302', ctxWith(data)).render(ctxWith(data))[0]
+  assert.match(p.lines()[6], /NEW YORK.*CLEAR/)
+  assert.ok([27, 28].some(c => p.cells[6][c].mos > 0 && p.cells[6][c].fg === 7), 'a white star')
+  // Every row has its sky: no row without a moving cell, whatever the code.
+  for (let r = 6; r < 18; r++) assert.ok([27, 28].some(c => p.cells[r][c].mos > 0), `row ${r} has weather`)
+})
+
+test('201: a birthday cake under the words, candles lit', () => {
+  const ctx = ctxWith()
+  for (const p of pageDef('201', ctx).render(ctx)) {
+    const inks = inksIn(p, [16, 17, 18, 19, 20, 21], [24, 37])
+    if (!inks.size) { assert.ok(p.lines().slice(15, 22).some(l => l.trim()), 'only a page full of words goes without'); continue }
+    assert.deepEqual([...inks].sort(), [3, 5, 6, 7], 'yellow flames, cyan candles, magenta cake, white icing')
+  }
+  assert.ok(pageDef('201', ctx).liveMs, 'and the flames move')
+})
+
+test('202: day and night round the world, the sun at noon', () => {
+  const ctx = ctxAt(Date.UTC(2026, 8, 28, 12))
+  const p = pageDef('202', ctx).render(ctx)[0]
+  const papers = new Set([20, 21, 22].flatMap(r => p.cells[r].slice(1, 39).map(x => x.bg)))
+  assert.ok(papers.has(4) && papers.has(0), 'blue day and black night')
+  assert.equal(p.cells[20][20].bg, 4, 'Greenwich is in daylight at noon UTC')
+  assert.equal(p.cells[20][1].bg, 0, 'the Pacific is in the dark')
+  const sunCol = p.cells[19].findIndex(x => x.mos > 0)
+  assert.ok(Math.abs(sunCol - 20) <= 1, `the sun is over Greenwich (column ${sunCol})`)
+})
+
+test('502: an hourglass beside the digits, its sand what is left', () => {
+  const draw = (focus) => { const ctx = ctxWith(allData(), { focus }); return pageDef('502', ctx).render(ctx)[0] }
+  const sand = (p, rows) => rows.reduce((n, r) => n + p.cells[r].filter((x, c) => c > 28 && x.mos > 0 && x.fg === 3).length, 0)
+  const full = draw({ state: 'idle', mode: 'work', left: 25 * 60e3 })
+  const half = draw({ state: 'paused', mode: 'work', left: 12.5 * 60e3 })
+  assert.ok(sand(full, [5, 6, 7]) > sand(half, [5, 6, 7]), 'the top bulb empties')
+  assert.ok(sand(half, [9, 10]) > sand(full, [9, 10]), 'the bottom fills')
+})
+
+test('sport: a game in progress has a marker that breathes', () => {
+  const data = allData()
+  data.sport_nfl = { ...data.sport_nfl, games: [{ ...data.sport_nfl.games[0], state: 'in', detail: 'Q2 1:00' }] }
+  const draw = (ms) => pageDef('601', ctxAt(ms, data)).render(ctxAt(ms, data))[0].cells[6][20]
+  assert.ok(draw(NOW).mos > 0 && draw(NOW).fg === 2, 'green, beside the live game')
+  assert.notEqual(draw(NOW).mos, draw(NOW + 1000).mos, 'and changes each second')
+  assert.ok(pageDef('601', ctxWith()).liveMs)
+})
+
+test('off air: the windmill turns beside OFF AIR, and the page says it moves', () => {
+  const ctx = ctxWith({}, {}, { errors: { itn: 'HTTP 503', events: 'HTTP 503' } })
+  const [a] = pageDef('101', ctx).render(ctx)
+  assert.match(a.lines().join('\n'), /OFF AIR/)
+  assert.equal(a.liveMs, 250)
+  assert.equal(a.clone().liveMs, 250, 'and a copy keeps it')
+  const later = { ...ctx, now: NOW + 2000 }
+  const [b] = pageDef('101', later).render(later)
+  const sails = (p) => p.cells.slice(3, 8).map(row => row.slice(27, 37).map(x => x.mos).join()).join('|')
+  assert.notEqual(sails(a), sails(b), 'the sails have turned')
+})

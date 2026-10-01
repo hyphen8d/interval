@@ -301,7 +301,7 @@ export const CITIES = [
 export function citiesUrl(units) {
   const q = new URLSearchParams({
     latitude: CITIES.map(c => c[1]).join(','), longitude: CITIES.map(c => c[2]).join(','),
-    current: 'temperature_2m,weather_code', daily: 'temperature_2m_max,temperature_2m_min',
+    current: 'temperature_2m,weather_code,is_day', daily: 'temperature_2m_max,temperature_2m_min',
     forecast_days: '1', timezone: 'auto', temperature_unit: units === 'C' ? 'celsius' : 'fahrenheit',
   })
   return `https://api.open-meteo.com/v1/forecast?${q}`
@@ -316,6 +316,9 @@ export function parseCities(json) {
       world: CITIES[i][3] === 'world',
       temp: Math.round(c.current?.temperature_2m),
       code: c.current?.weather_code ?? null,
+      // Day or night there (2026-10-01), so a clear sky in Tokyo at 2am is
+      // a star on 302 and not a sun. A copy without it reads as day.
+      isDay: c.current?.is_day !== 0,
       hi: Math.round(c.daily?.temperature_2m_max?.[0]),
       lo: Math.round(c.daily?.temperature_2m_min?.[0]),
     })),

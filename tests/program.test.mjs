@@ -140,7 +140,11 @@ test('C cycles colour, black-and-white and the green monitor', async () => {
 test('poor reception garbles the page and never the header', async () => {
   const h = await boot({ query: '?rx=0.25' })
   await h.go('101', 3500)
-  assert.ok(!h.find('Brisbane Lions win their third'), 'the text is damaged')
+  // Damaged somewhere, against the page as sent. It once asked that one
+  // headline be broken, and reception is random: now and then the whole
+  // sentence came through clean and the test failed (2026-10-01).
+  const sent = h.program.truth.lines(), seen = h.program.shown.lines()
+  assert.ok(sent.slice(1).some((l, r) => l !== seen[r + 1]), 'the text is damaged')
   assert.match(h.row(0), /^ P101 INTERVAL\s+Mon Sep 28/, 'the header is not')
   assert.ok(h.crt.params.noise > 0.2, 'and the tube shows it')
   h.shutdown()
@@ -586,5 +590,17 @@ test('switching off clears the effects queue; only `always` effects survive', as
   assert.equal(obj.v, 10, 'a cancelled tween lands where it was going')
   h.advance(1500)
   assert.deepEqual(ran, ['always'])
+  h.shutdown()
+})
+
+test('an off-air page turns its windmill in place, though its page does not move', async () => {
+  const h = await boot({ feeds: 'fail' })
+  await h.go('101', 6000)
+  assert.ok(h.page().includes('OFF AIR'))
+  assert.ok(Number.isFinite(h.program.nextLive), 'the set redraws it')
+  const sails = () => h.program.truth.cells.slice(3, 8).map(row => row.slice(27, 37).map(x => x.mos).join()).join('|')
+  const before = sails()
+  h.advance(2000)
+  assert.notEqual(sails(), before, 'and the sails have turned')
   h.shutdown()
 })

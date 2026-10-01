@@ -161,6 +161,19 @@ rebuilt.
   around the one-ink-one-paper cell: the lighthouse's bands are whole cell
   rows, and the night train's black body is the cells' paper (`trainSpan`
   feeds the bgFor), because windows, body and valley are three colours.
+  **2026-10-01, the picture is the data** (the owner liked the rain, the
+  launch arc and the candle): every sky on 302 moves (`skyKind`,
+  `skyCells`: the sun glints, a clear night is a star and says CLEAR,
+  cloud drifts, fog slides), and 300's icon has a moon at night; 300 draws
+  the sun's arc (`sunPosition`, `sunArcPixels`); 201 has a birthday cake;
+  202 has day and night round the world (blue sea in daylight, as Ceefax's
+  weather maps had it); 502 has an hourglass; a live game on 601-603 has a
+  marker that breathes; and the off-air and fault pages have the interval
+  picture, a windmill (`intervalPicture`), which moves because the drawn
+  page carries its own `Page.liveMs` (`program.liveMsOf`). Two lessons from
+  the tube: sky cells keep their top pixel row dark, or a run of sunny
+  cities joins into one bar; and the windmill steps 15 degrees at a time,
+  since thin sails turned smoothly shimmered.
 - **The index (100)** is the map and nothing else: it needs no source and
   never moves. Its NOW line (the Dow, a temperature, a score) was removed
   2026-10-01 to clear space. Sections have a blank row between them; sport is three to a row

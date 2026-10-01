@@ -166,12 +166,21 @@ export function creditText(ctx, feedIds) {
   return { text: text ?? clip(names, CREDIT_MAX), fg: GREEN }
 }
 
+/** The interval picture (2026-10-01): a windmill turning beside OFF AIR,
+ *  as the BBC ran between programmes, and the page redrawn four times a
+ *  second so it turns. On the off-air page and the set's fault page. */
+export function intervalPicture(p, ms) {
+  p.art(3, 27, Pic.windmillPixels(ms), { Y: YELLOW, W: WHITE, G: GREEN })
+  p.liveMs = 250
+}
+
 /** A page whose source has never answered, once the set has given up
  *  waiting for it. Honest about why, and about what happens next. */
 export function offAir(num, title, feedIds, ctx) {
   const p = new Page()
   masthead(p, num, title)
   p.double(5, 2, 'OFF AIR', YELLOW)
+  intervalPicture(p, ctx.now)
   let r = p.wrap(8, 2, 'This page is built from a source that has not answered the set yet.', 36, WHITE)
   for (const id of feedIds) {
     const e = ctx.entry(id)
@@ -259,16 +268,30 @@ const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
 const compass = (deg) => (Number.isFinite(deg) ? COMPASS[Math.round(deg / 45) % 8] : '')
 
 /** A small weather picture, 11 columns by 4 rows, for a WMO code. */
-function weatherIcon(code, ms = 0) {
+function weatherIcon(code, ms = 0, isDay = true) {
   const f = Math.floor(ms / 250)
+  // 2026-10-01: the dry skies move too, slowly. The cloud drifts a pixel
+  // either way over eight seconds, the sun's rays turn between + and x every
+  // 1.2s, fog slides, and a clear night is a moon among stars, not a sun.
+  const drift = Math.round(1.5 * Math.sin(ms / 8000 * 2 * Math.PI))
   const sun = (x, y) => (x - 7) ** 2 + (y - 5) ** 2 < 18
+  const moon = (x, y) => sun(x, y) && (x - 9.5) ** 2 + (y - 3.8) ** 2 >= 14
+  const rays = (x, y) => {
+    const diag = Math.floor(ms / 1200) % 2
+    const dx = (x - 7) / 1.24, dy = y - 5
+    const r = Math.hypot(dx, dy)
+    if (r < 4.6 || r > 6.2) return false
+    const a = (Math.atan2(dy, dx) / (Math.PI / 4) + 8 + (diag ? 0.5 : 0)) % 1
+    return a < 0.18 || a > 0.82
+  }
+  const stars = (x, y) => [[16, 1], [19, 6], [14, 10], [20, 2]].some(([sx, sy], i) => x === sx && y === sy && Pic.hash3(Math.floor(ms / 800), i, 3) > 0.3)
   const cloud = (x, y) => ((x - 13) / 8) ** 2 + ((y - 7.5) / 3.3) ** 2 < 1 || ((x - 10) / 4) ** 2 + ((y - 5.5) / 3) ** 2 < 1
   const kind = wmoWords(code)[2]
   return pixels(22, 12, (x, y) => {
-    if (kind === 'SUN') return sun(x, y) ? 'Y' : null
-    if (kind === 'PART') return cloud(x, y) ? 'W' : sun(x, y) ? 'Y' : null
-    if (kind === 'FOG') return y % 3 === 1 && x > 2 && x < 20 ? 'W' : null
-    const c = cloud(x, y - 1.5)
+    if (kind === 'SUN') return isDay ? (sun(x, y) || rays(x, y) ? 'Y' : null) : moon(x, y) || stars(x, y) ? 'W' : null
+    if (kind === 'PART') return cloud(x - drift, y) ? 'W' : (isDay ? sun(x, y) : moon(x, y)) ? (isDay ? 'Y' : 'W') : null
+    if (kind === 'FOG') return y % 3 === 1 && x > 2 && x < 20 && (x + (y % 2 ? f : -f) / 3 + 40) % 7 >= 1 ? 'W' : null
+    const c = cloud(x - (kind === 'CLD' ? drift : 0), y - 1.5)
     if (c) return 'W'
     if (y >= 9) {
       // The drops fall: the pattern steps down a row every quarter second.
@@ -594,9 +617,12 @@ export function pickEvenly(list, n) {
   return Array.from({ length: n }, (_, i) => list[Math.floor(i * step + step / 2)])
 }
 export const pickBirths = (births, n = 6) => pickEvenly(births, n)
+const CAKE_ROW = 16
 page('201', 'Born today', {
   feeds: ['otd'],
   subpageMs: 10000,
+  // The cake's candles, at the 501 candle's pace.
+  liveMs: 150,
   render(ctx) {
     return gate(ctx, '201', 'BORN TODAY', ['otd'], ({ otd }) => {
       if (!otd.births?.length) return listPage('201', 'BORN TODAY', [], ctx, { feed: 'otd', right: 'TODAY', fast: [['TODAY', '200'], ['NEWS', '101'], ['WEATHER', '300'], ['INDEX', '100']], empty: 'Nobody is listed as born on this day yet.' })
@@ -610,7 +636,10 @@ page('201', 'Born today', {
         p.double(BODY_TOP, 1, String(e.year ?? ''), CYAN)
         let r = BODY_TOP + 3
         for (const l of wrapText(name, 38).slice(0, 2)) { p.double(r, 1, l, YELLOW); r += 2 }
-        if (what) p.wrap(r + 1, 1, what[0].toUpperCase() + what.slice(1), 38, WHITE, BODY_BOTTOM)
+        const end = what ? p.wrap(r + 1, 1, what[0].toUpperCase() + what.slice(1), 38, WHITE, BODY_BOTTOM) : r
+        // A birthday cake (2026-10-01), its candles burning, bottom right --
+        // where there is room under the words, which is nearly always.
+        if (end < CAKE_ROW) p.art(CAKE_ROW, 24, Pic.cakePixels(ctx.now + i * 997), { Y: YELLOW, C: CYAN, W: WHITE, M: MAGENTA })
         creditLine(p, ctx, 'otd')
         p.fast([['TODAY', '200'], ['NEWS', '101'], ['WEATHER', '300'], ['INDEX', '100']])
         return p
@@ -629,6 +658,20 @@ export function sunInfo(rise, set, nowMs) {
   const len = `DAYLIGHT ${Math.floor((b - a) / 60)}H ${pad2((b - a) % 60)}M`
   const until = now < a ? `  SUNRISE IN ${span((a - now) * 60000)}` : now < b ? `  SUNSET IN ${span((b - now) * 60000)}` : '  THE SUN IS DOWN'
   return len + until
+}
+
+/** Where the sun is in the day (2026-10-01): { isDay, frac }, frac being
+ *  how much of the daylight -- or after dark, of the night -- has gone, from
+ *  the forecast's local "HH:MM" sunrise and sunset. The night is taken as
+ *  the rest of the 24 hours, which is close enough to draw a moon on. Null
+ *  when the times are missing. */
+export function sunPosition(rise, set, nowMs) {
+  const toMin = (t) => { const m = /^(\d\d):(\d\d)$/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : null }
+  const a = toMin(rise), b = toMin(set)
+  if (a === null || b === null || b <= a) return null
+  const d = new Date(nowMs), now = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
+  if (now >= a && now <= b) return { isDay: true, frac: (now - a) / (b - a) }
+  return { isDay: false, frac: ((now - b + 1440) % 1440) / (1440 - (b - a)) }
 }
 
 /** "61F", or "--" for a reading the forecast did not carry: the parsers
@@ -667,7 +710,9 @@ page('300', 'Weather: today', {
     return weatherGate('300', 'WEATHER', ctx, (w) => {
       const p = new Page()
       masthead(p, '300', 'WEATHER', { right: 'TODAY' })
-      p.art(BODY_TOP, 1, weatherIcon(w.current.code, ctx.now), { W: WHITE, Y: YELLOW, C: CYAN })
+      const today = w.days[0]
+      const pos = today ? sunPosition(today.sunrise, today.sunset, ctx.now) : null
+      p.art(BODY_TOP, 1, weatherIcon(w.current.code, ctx.now, pos ? pos.isDay : true), { W: WHITE, Y: YELLOW, C: CYAN })
       p.text(BODY_TOP, 14, 'NOW', YELLOW)
       p.double(BODY_TOP + 1, 14, temp(w.current.temp, w.units), WHITE)
       p.text(BODY_TOP + 1, 22, clip(wmoWords(w.current.code)[1], 17), CYAN)
@@ -682,7 +727,6 @@ page('300', 'Weather: today', {
         } else p.text(r, 12, 'PAST', MAGENTA)
         r += 2
       }
-      const today = w.days[0]
       if (today) {
         p.text(r, 1, `SUNRISE ${today.sunrise ?? '--:--'}   SUNSET ${today.sunset ?? '--:--'}`, WHITE)
         p.text(r + 1, 1, `HIGH ${temp(today.hi, w.units)}   LOW ${temp(today.lo, w.units)}`, YELLOW)
@@ -690,6 +734,10 @@ page('300', 'Weather: today', {
         const sun = sunInfo(today.sunrise, today.sunset, ctx.now)
         if (sun) p.text(r + 2, 1, sun, CYAN)
       }
+      // The day as a picture (2026-10-01): the sun on its arc from sunrise to
+      // sunset, or the moon across the night, on the three rows above the
+      // key line. 203's launch arc is the model.
+      if (pos) p.art(19, 1, Pic.sunArcPixels(pos.frac, pos.isDay, ctx.now), { Y: YELLOW, W: WHITE, C: CYAN })
       p.text(22, 1, '% IS THE CHANCE OF RAIN', MAGENTA)
       creditLine(p, ctx, 'weather')
       p.fast([['5-DAY', '301'], ['CITIES', '302'], ['NEWS', '101'], ['INDEX', '100']])
@@ -751,10 +799,14 @@ page('302', 'Weather: cities', {
           const cold = cities.units === 'F' ? c.temp <= 40 : c.temp <= 4
           p.text(r, 1, clip(c.name, 13), i % 2 ? WHITE : YELLOW)
           p.text(r, 15, temp(c.temp, cities.units).padStart(4), hot ? RED : cold ? CYAN : WHITE)
-          p.text(r, 22, clip(wmoWords(c.code)[2], 5), GREEN)
-          // Where it is raining, snowing or storming, the row shows it.
-          const kind = Pic.weatherKind(c.code)
-          if (kind) for (const k of [0, 1]) p.mosaic(r, 27 + k, Pic.weatherCell(kind, ctx.now, k), kind === 'snow' ? WHITE : kind === 'storm' ? YELLOW : CYAN)
+          // SUN at 2am in Tokyo read wrong: a clear night is CLEAR.
+          const word = wmoWords(c.code)[2]
+          p.text(r, 22, word === 'SUN' && c.isDay === false ? 'CLEAR' : clip(word, 5), GREEN)
+          // Every row has its weather in it, moving slowly: rain, snow and
+          // storms fall (2026-09-28), and since 2026-10-01 the sun glints, a
+          // star twinkles after dark, cloud drifts and fog slides.
+          const kind = Pic.skyKind(c.code, c.isDay !== false)
+          if (kind) Pic.skyCells(kind, ctx.now + i * 370).forEach(([bits, ink], k) => p.mosaic(r, 27 + k, bits, { Y: YELLOW, W: WHITE, C: CYAN }[ink]))
           p.text(r, 30, `${temp(c.hi, '')}/${temp(c.lo, '')}`.padStart(8), WHITE)
         })
         creditLine(p, ctx, 'cities')
@@ -794,6 +846,17 @@ page('202', 'Clock', {
       try { hm = hhmmIn(ctx.now, tz) } catch (e) { /* no time zone data */ }
       p.text(r, c + 13, hm, YELLOW)
     })
+    // Day and night round the world (2026-10-01): the map on rows 20-22,
+    // blue paper where it is day and black where it is night, the land green
+    // in the light and dark blue in the dark, and the sun on row 19 over the
+    // place where it is noon. The terminator moves a cell every nineteen
+    // minutes. Paper per cell, so the edge between day and night is a cell
+    // edge (Pic.worldPixels decides land per cell for the same reason).
+    const world = Pic.worldPixels(ctx.now)
+    const lonOf = (c) => Pic.worldLon((c - 1) * 2)
+    p.art(20, 1, world, { G: GREEN, B: BLUE }, (r, c) => (Pic.dayAt(lonOf(c), ctx.now) ? BLUE : BLACK))
+    const noon = Math.round(((Pic.sunLon(ctx.now) + 180) / 360) * Pic.WORLD_W / 2 - 0.5)
+    p.mosaic(19, 1 + Math.min(Pic.WORLD_W / 2 - 1, Math.max(0, noon)), 60, YELLOW)
     p.fast([['TODAY', '200'], ['NEWS', '101'], ['PAUSE', '500'], ['INDEX', '100']])
     return [p]
   },
@@ -1022,6 +1085,8 @@ for (const [key, name, , num] of LEAGUES) {
   page(num, `Sport: ${name}`, {
     feeds: [`sport_${key}`],
     subpageMs: 12000,
+    // For the live marker; liveRender also keeps a live scoreboard fresh.
+    liveMs: 1000,
     render(ctx) {
       return gate(ctx, num, name, [`sport_${key}`], (data) => {
         const games = data[`sport_${key}`].games.slice()
@@ -1043,6 +1108,10 @@ for (const [key, name, , num] of LEAGUES) {
             p.text(r, 11, clip(g.home.abbr, 4), post && g.home.winner ? YELLOW : WHITE)
             if (g.state !== 'pre') p.text(r, 16, String(g.home.score).padStart(3), post && g.home.winner ? YELLOW : WHITE)
             p.text(r, 22, clip(st.text, 17), st.fg)
+            // A game in progress has a marker that breathes, a second big and
+            // a second small (2026-10-01): which games are on, from across
+            // the room, without the scores having to move.
+            if (g.state === 'in') p.mosaic(r, 20, Math.floor(ctx.now / 1000) % 2 ? 63 : 12, GREEN)
           })
           // Row 22, the spare one (2026-10-01): on row 21 the line was written
           // over the sixteenth game whenever a game was on.
@@ -1161,8 +1230,16 @@ page('502', 'Focus timer', {
     const whole = f.mode === 'break' ? BREAK_MS : FOCUS_MS
     const secs = Math.ceil(left / 1000)
     const text = `${pad2(Math.floor(secs / 60))}:${pad2(secs % 60)}`
-    const px = Pic.clockPixels(text, f.state === 'done' ? 'G' : f.mode === 'break' ? 'C' : 'Y')
-    p.art(BODY_TOP + 2, Math.floor((COLS - Math.ceil(px[0].length / 2)) / 2), px, { Y: YELLOW, C: CYAN, G: GREEN })
+    const ink = f.state === 'done' ? 'G' : f.mode === 'break' ? 'C' : 'Y'
+    const px = Pic.clockPixels(text, ink)
+    // The digits and an hourglass beside them (2026-10-01), centred as a
+    // pair: the sand is what is left, falling while the timer runs, so the
+    // page reads from across the room without reading the digits.
+    const w = Math.ceil(px[0].length / 2), gap = 3
+    const c0 = Math.floor((COLS - (w + gap + 6)) / 2)
+    p.art(BODY_TOP + 2, c0, px, { Y: YELLOW, C: CYAN, G: GREEN })
+    const glass = Pic.hourglassPixels(f.state === 'done' ? 0 : left / whole, f.state === 'run', ctx.now)
+    p.art(BODY_TOP, c0 + w + gap, glass, { W: WHITE, C: CYAN, S: { Y: YELLOW, C: CYAN, G: GREEN }[ink] })
     // How far through, as a bar of blocks across the page.
     const done = Math.round((1 - left / whole) * 76)
     p.bar(BODY_TOP + 9, 1, Math.max(0, done), f.mode === 'break' ? CYAN : YELLOW)
