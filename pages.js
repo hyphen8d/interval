@@ -436,7 +436,11 @@ page('101', 'News headlines', {
       // Briefs cut off with "..." go last: a sentence that ends reads as
       // news, one that trails off as a fault.
       const whole = briefs.filter(t => !t.endsWith('...')), cut = briefs.filter(t => t.endsWith('...'))
-      const blocks = [...itn.stories.map(brief), ...whole, ...cut].map(t => textBlock(null, t))
+      // brief(s), not .map(brief): map passes the index as brief's `max`, so
+      // the first story was cut to nothing-and-"..." and every one after it
+      // lost its last words ("defeating the Warrington...") from 2026-09-28
+      // until a cycle was watched on the tube (2026-10-05).
+      const blocks = [...itn.stories.map(s => brief(s)), ...whole, ...cut].map(t => textBlock(null, t))
       // Nothing to brief (both sources answered, with nothing in them) is
       // still a page: an empty list would leave the set searching forever.
       const laid = blocks.length ? fillPages(blocks, 2) : [[]]

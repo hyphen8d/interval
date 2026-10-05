@@ -8,7 +8,7 @@ import { PAGES, pageDef, pageOrder, INDEX, MAGAZINES, SECTIONS } from '../pages.
 import { fixtureData } from '../tools/lib/fixture-ctx.mjs'
 import { KEYS } from '../constants.js'
 import { validPage } from '../carousel.js'
-import { COLS } from '../teletext.js'
+import { COLS, fold } from '../teletext.js'
 
 const fx = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'))
 const editorial = JSON.parse(readFileSync(new URL('../editorial.json', import.meta.url), 'utf8'))
@@ -519,4 +519,14 @@ test('off air: the windmill turns beside OFF AIR, and the page says it moves', (
   const [b] = pageDef('101', later).render(later)
   const sails = (p) => p.cells.slice(3, 8).map(row => row.slice(27, 37).map(x => x.mos).join()).join('|')
   assert.notEqual(sails(a), sails(b), 'the sails have turned')
+})
+
+test('101 prints every "In the news" story whole', () => {
+  // .map(brief) handed brief the index as its length limit: story 0 was
+  // cut to "...", and the rest lost their endings (2026-10-05).
+  const ctx = ctxWith()
+  const text = pageDef('101', ctx).render(ctx).map(p => p.lines().join(' ')).join(' ').replace(/\s+/g, ' ')
+  // Folded as the page folds it: the teletext set has no ç.
+  for (const s of DATA.itn.stories) assert.ok(text.includes(fold(s)), `whole: ${s}`)
+  assert.ok(!/(^| )\.\.\.( |$)/.test(text), 'no story reduced to "..."')
 })
