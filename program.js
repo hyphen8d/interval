@@ -121,7 +121,9 @@ const program = {
     this.rx = 1
     this.interference = null
     this.nextInterference = perf() + this.interferenceGap()
-    this.cycle = { on: false, section: 0, index: 0, next: Infinity, holdSection: false }
+    // `resume`: per page, the subpage cycling shows first the next time it
+    // comes round (2026-10-05). In memory only; a new session starts over.
+    this.cycle = { on: false, section: 0, index: 0, next: Infinity, holdSection: false, resume: {} }
     this.subEpoch = 0
     this.nextLive = Infinity
     this.boot = null
@@ -412,9 +414,16 @@ const program = {
     // Subpages count from the page's arrival, so a page always opens on its
     // first screen (2026-09-28). The broadcaster's own clock, which the first
     // version followed, opened a twelve-fact page at fact seven.
-    this.subEpoch = Date.now()
-    this.sub = 0
-    this.nextLive = this.liveMsOf(def, pages[0]) ? now + this.liveMsOf(def, pages[0]) : Infinity
+    //
+    // Except when cycling brings it (2026-10-05): then it carries on from
+    // the screen after the last one cycling showed. Watched on the tube, a
+    // cycle stays 36s at most, so Did you know showed facts 1-3 of 8 every
+    // time round and the gallery three of its eight pictures -- the
+    // aquarium, the lighthouse and the night train never came up at all.
+    const start = this.cycle.on ? (this.cycle.resume[this.page] ?? 0) % pages.length : 0
+    this.subEpoch = Date.now() - start * this.subMs
+    this.sub = start
+    this.nextLive = this.liveMsOf(def, pages[start]) ? now + this.liveMsOf(def, pages[start]) : Infinity
     if (this.cycle.on) this.cycle.next = now + this.cycleDwell(def, pages.length)
     this.reveal = false
     this.size = 0
@@ -633,6 +642,8 @@ const program = {
     if (this.want) { if (now - this.wantSince < FEED_WAIT_MS) return }
     else if (now < c.next) return
     const from = c.section
+    // Where this page's screens got to, for the next time round.
+    if (this.page && this.pages?.length > 1) c.resume[this.page] = (this.sub + 1) % this.pages.length
     let stop = this.cycleFind(c.section, c.index + 1)
     // Holding the section goes round it again, unless it has emptied.
     if (c.holdSection && stop && stop.section !== c.section) stop = this.cycleFind(c.section, 0)

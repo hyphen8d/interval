@@ -530,3 +530,28 @@ test('101 prints every "In the news" story whole', () => {
   for (const s of DATA.itn.stories) assert.ok(text.includes(fold(s)), `whole: ${s}`)
   assert.ok(!/(^| )\.\.\.( |$)/.test(text), 'no story reduced to "..."')
 })
+
+test('sport: live, then the last day\'s results, then what is coming, then older results', () => {
+  const base = DATA.sport_nfl.games[0]
+  const g = (abbr, state, hoursAgo) => ({ ...base, state, detail: state === 'post' ? 'FINAL' : 'Q1 9:00', date: NOW - hoursAgo * 3600e3, away: { ...base.away, abbr }, home: { ...base.home } })
+  // NOW is a Monday, 8pm. Sunday's early game started 31 hours before, and
+  // still counts as yesterday's (24 hours was tried, and dropped it below).
+  const games = [g('TON', 'pre', -2), g('OLD', 'post', 96), g('SUN', 'post', 31), g('LIV', 'in', 1)]
+  const data = { ...allData(), sport_nfl: { ...DATA.sport_nfl, games } }
+  const rows = pageDef('601', ctxWith(data)).render(ctxWith(data))[0].lines().slice(6, 10).map(l => l.trim().slice(0, 3))
+  assert.deepEqual(rows, ['LIV', 'SUN', 'TON', 'OLD'])
+})
+
+test('102 has a picture for each kind of fact; 200 has the year in big digits', () => {
+  for (const tag of ['TECH', 'GAMES', 'HACKING']) {
+    const ed = { ...editorial, facts: Array.from({ length: 8 }, (_, i) => ({ tag, text: `A short fact number ${i}.` })) }
+    const ctx = { ...ctxWith(), editorial: ed }
+    const p = pageDef('102', ctx).render(ctx)[0]
+    const pic = p.cells.slice(15, 21).flatMap(row => row.slice(25, 38)).filter(x => x.mos > 0)
+    assert.ok(pic.length > 10, `${tag} has its picture`)
+  }
+  const ctx = ctxWith()
+  const p = pageDef('200', ctx).render(ctx)[0]
+  assert.ok(p.cells.slice(4, 9).some(row => row.slice(1, 20).some(x => x.mos > 0 && x.fg === 3)), 'a big yellow year')
+  assert.ok(p.lines().slice(10, 14).join(' ').trim().length > 20, 'and the event under it')
+})

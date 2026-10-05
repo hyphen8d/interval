@@ -49,7 +49,9 @@ export const HOUSEHOLD = [
   // 22. Twenty-six months' worth leaves margin for a late release.
   { id: 'CPIAUCSL', name: 'INFLATION', kind: 'yoy', days: 800 },
   { id: 'DFF', name: 'FED INTEREST RATE', kind: 'percent', days: 30 },
-  { id: 'UNRATE', name: 'UNEMPLOYMENT', kind: 'percent', days: 120 },
+  // Monthly, so ten points need ten months (2026-10-05): at 120 days the
+  // chart on 402 had three points and read as nearly empty beside the rest.
+  { id: 'UNRATE', name: 'UNEMPLOYMENT', kind: 'percent', days: 330 },
 ]
 
 /**

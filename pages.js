@@ -478,8 +478,14 @@ export function factsFor(list, nowMs) {
   return Array.from({ length: n }, (_, i) => list[(day * n + i) % list.length])
 }
 const TAG_COLOUR = { TECH: CYAN, GAMES: GREEN, HACKING: MAGENTA }
+// The chip's light is green whatever its tag's colour: cyan on cyan pins
+// would be one blur.
+const FACT_PICTURES = { GAMES: (ms) => Pic.invaderPixels(ms), TECH: (ms) => Pic.chipPixels(ms).map(l => l.replace(/G/g, 'L')), HACKING: (ms) => Pic.terminalPixels(ms) }
+const FACT_PIC_ROW = 15
 page('102', 'Did you know', {
   subpageMs: 12000,
+  // The invader steps, the chip's light and the cursor blink.
+  liveMs: 250,
   render(ctx) {
     const facts = factsFor(ctx.editorial.facts, ctx.now)
     if (!facts.length) return [listPage('102', 'DID YOU KNOW', [], ctx, { fast: [['INDEX', '100']], empty: 'No facts written yet.' })[0]]
@@ -487,7 +493,11 @@ page('102', 'Did you know', {
       const p = new Page()
       masthead(p, '102', 'DID YOU KNOW', { sub: i, subs: facts.length, right: f.tag || 'NEWS' })
       p.text(BODY_TOP + 1, 1, f.tag || '', TAG_COLOUR[f.tag] || YELLOW)
-      p.wrap(BODY_TOP + 3, 1, f.text, 38, WHITE, BODY_BOTTOM)
+      const end = p.wrap(BODY_TOP + 3, 1, f.text, 38, WHITE, BODY_BOTTOM)
+      // A picture for the kind of fact (2026-10-05), bottom right, as 201
+      // has its cake: one fact a screen left two-thirds of it empty.
+      const pic = FACT_PICTURES[f.tag]
+      if (pic && end < FACT_PIC_ROW - 1) p.art(FACT_PIC_ROW, 25, pic(ctx.now), { G: TAG_COLOUR[f.tag], W: WHITE, C: CYAN, L: GREEN })
       p.fast([['NEWS', '101'], ['TODAY', '200'], ['BORN', '201'], ['INDEX', '100']])
       return p
     })
@@ -599,8 +609,17 @@ page('200', 'On this day', {
       return picks.map((e, i) => {
         const p = new Page()
         masthead(p, '200', 'ON THIS DAY', { sub: i, subs: picks.length, right: date })
-        p.double(BODY_TOP, 1, String(e.year ?? ''), YELLOW)
-        p.wrap(BODY_TOP + 3, 1, e.text, 38, WHITE, BODY_BOTTOM)
+        // The year in the clock's big digits (2026-10-05), so the page reads
+        // "1789" from across the room; the event goes under it. A year that
+        // is not four digits or fewer (a BC date) keeps the double height.
+        const year = String(e.year ?? '')
+        if (/^\d{1,4}$/.test(year)) {
+          p.art(BODY_TOP, 1, Pic.clockPixels(year, 'Y'), { Y: YELLOW })
+          p.wrap(BODY_TOP + 6, 1, e.text, 38, WHITE, BODY_BOTTOM)
+        } else {
+          p.double(BODY_TOP, 1, year, YELLOW)
+          p.wrap(BODY_TOP + 3, 1, e.text, 38, WHITE, BODY_BOTTOM)
+        }
         creditLine(p, ctx, 'otd')
         p.fast([['BORN', '201'], ['NEWS', '101'], ['WEATHER', '300'], ['INDEX', '100']])
         return p
@@ -833,6 +852,9 @@ export const WORLD_CLOCKS = [
 const hhmmIn = (ms, tz) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz })
 page('202', 'Clock', {
   liveMs: 500,
+  // 20s when cycling (2026-10-05): a one-screen page got the 12s minimum,
+  // so the pages most worth leaving up had the shortest turn of all.
+  cycleMs: 20000,
   render(ctx) {
     const p = new Page()
     masthead(p, '202', 'CLOCK', { right: 'TODAY' })
@@ -1082,7 +1104,19 @@ export function gameStatus(g) {
   const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(' ', '').toUpperCase()
   return { text: `${day} ${time}`, fg: CYAN }
 }
-const GAME_ORDER = { in: 0, pre: 1, post: 2 }
+/** Where a game goes on the scoreboard: live games, then results from
+ *  yesterday or today, then what is coming up, then older results.
+ *  2026-10-05: it was live, upcoming, results, so on a Monday morning the
+ *  evening's one game sat above all of Sunday's finals -- the scores people
+ *  turn the page on for. "Within 24 hours" was tried first and left
+ *  Sunday's early games below Monday's on the tube; a calendar day is what
+ *  a viewer means by "last night's". */
+export function gameRank(g, now) {
+  if (g.state === 'in') return 0
+  if (g.state !== 'post') return 2
+  const d = new Date(now)
+  return g.date >= new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1).getTime() ? 1 : 3
+}
 /** Page number -> league key, for cycling to skip a league with no games. */
 export const LEAGUE_PAGES = Object.fromEntries(LEAGUES.map(([key, , , num]) => [num, key]))
 for (const [key, name, , num] of LEAGUES) {
@@ -1094,7 +1128,7 @@ for (const [key, name, , num] of LEAGUES) {
     render(ctx) {
       return gate(ctx, num, name, [`sport_${key}`], (data) => {
         const games = data[`sport_${key}`].games.slice()
-          .sort((a, b) => GAME_ORDER[a.state] - GAME_ORDER[b.state] || (a.state === 'post' ? b.date - a.date : a.date - b.date))
+          .sort((a, b) => gameRank(a, ctx.now) - gameRank(b, ctx.now) || (a.state === 'post' ? b.date - a.date : a.date - b.date))
         const per = 16
         const chunks = []
         for (let i = 0; i < Math.max(1, games.length); i += per) chunks.push(games.slice(i, i + per))
@@ -1199,6 +1233,9 @@ export function thoughtFor(list, nowMs) {
 }
 page('501', 'A thought', {
   liveMs: 140,
+  // 20s when cycling (2026-10-05): a one-screen page got the 12s minimum,
+  // so the pages most worth leaving up had the shortest turn of all.
+  cycleMs: 20000,
   render(ctx) {
     const t = thoughtFor(ctx.editorial.thoughts, ctx.now)
     const p = new Page()

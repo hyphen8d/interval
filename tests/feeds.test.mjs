@@ -355,3 +355,10 @@ test('health record: a removed source is pruned, and the committed file holds on
   const committed = JSON.parse(readFileSync(new URL('../tools/feed-health.json', import.meta.url), 'utf8'))
   assert.deepEqual(Object.keys(committed.feeds).filter(id => !(id in FEEDS)), [])
 })
+
+test('402: a monthly series looks back far enough for its chart', async () => {
+  // Unemployment at 120 days had three points to chart (2026-10-05).
+  const { HOUSEHOLD } = await import('../tools/fetch-markets.mjs')
+  const un = HOUSEHOLD.find(s => s.id === 'UNRATE')
+  assert.ok(un.days >= 9 * 31, `${un.days} days is at least nine months back, for ten readings`)
+})

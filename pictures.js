@@ -596,3 +596,48 @@ export function windmillPixels(ms) {
     return null
   })
 }
+
+// ---------------------------------------------------------------------------
+// 2026-10-05: a picture for each kind of fact on Did you know (102), whose
+// one fact a screen left two-thirds of it empty. Bottom right, where 201's
+// cake is; each part in whole cells, so no cell holds two colours.
+// ---------------------------------------------------------------------------
+
+const INVADER = [
+  ['..#.....#..', '...#...#...', '..#######..', '.##.###.##.', '###########', '#.#######.#', '#.#.....#.#', '...##.##...'],
+  ['..#.....#..', '#..#...#..#', '#.#######.#', '###.###.###', '###########', '.#########.', '..#.....#..', '.#.......#.'],
+]
+/** GAMES: a Space Invader, 22x16 pixels (each of its pixels drawn 2x2),
+ *  stepping between its two frames once a second, as it marched. */
+export function invaderPixels(ms) {
+  const f = INVADER[Math.floor(ms / 1000) % 2]
+  return pixels(22, 16, (x, y) => (f[y >> 1]?.[x >> 1] === '#' ? 'G' : null))
+}
+
+/** TECH: a chip, 24x15 pixels -- a white body, four cyan pins above and
+ *  below, and a green light that blinks every 1.2s. The light is exactly
+ *  one cell, so it never shares one with the body. */
+export function chipPixels(ms) {
+  const on = Math.floor(ms / 1200) % 2 === 0
+  return pixels(24, 15, (x, y) => {
+    const pin = [6, 10, 14, 18].some(px => x === px || x === px + 1)
+    if (y <= 2 || y >= 12) return pin ? 'C' : null
+    if (x < 4 || x > 19) return null
+    if (on && x >= 16 && x <= 17 && y >= 6 && y <= 8) return 'G'
+    return 'W'
+  })
+}
+
+/** HACKING: a terminal, 24x18 pixels -- a white frame of whole cells round
+ *  three green lines of text and a cursor blinking once a second. */
+export function terminalPixels(ms) {
+  const blink = Math.floor(ms / 1000) % 2 === 0
+  return pixels(24, 18, (x, y) => {
+    if (y <= 2 || y >= 15 || x <= 1 || x >= 22) return 'W'
+    if (y === 4 && x >= 3 && x <= 12) return 'G'
+    if (y === 7 && x >= 3 && x <= 16) return 'G'
+    if (y === 10 && x >= 3 && x <= 8) return 'G'
+    if (blink && y >= 9 && y <= 11 && x >= 10 && x <= 11) return 'G'
+    return null
+  })
+}

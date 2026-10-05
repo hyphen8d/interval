@@ -102,3 +102,18 @@ test('a cloud is always in its cells, and a star keeps off the word before it', 
     assert.equal(P.skyCells('star', ms)[0][0] & (1 | 4 | 16), 0, `the star's left edge is dark at ${ms}ms`)
   }
 })
+
+test('the fact pictures move, slowly: the invader steps, the light and the cursor blink', () => {
+  for (const pic of [P.invaderPixels, P.chipPixels, P.terminalPixels]) {
+    assert.deepEqual(pic(0), pic(900), `${pic.name} holds for most of a second`)
+    assert.notDeepEqual(pic(0), pic(1300), `${pic.name} then changes`)
+  }
+  // Each part in whole cells: no cell row-and-column holds two colours.
+  for (const pic of [P.chipPixels(0), P.terminalPixels(0)]) {
+    for (let r = 0; r * 3 < pic.length; r++) for (let c = 0; c * 2 < pic[0].length; c++) {
+      const inks = new Set()
+      for (let y = r * 3; y < r * 3 + 3; y++) for (let x = c * 2; x < c * 2 + 2; x++) if (pic[y]?.[x] && pic[y][x] !== '.') inks.add(pic[y][x])
+      assert.ok(inks.size <= 1, `cell ${r},${c} is one colour`)
+    }
+  }
+})

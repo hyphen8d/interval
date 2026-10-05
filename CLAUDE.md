@@ -119,7 +119,12 @@ rebuilt.
 - **Cycling is manual.** N starts it; the set never cycles by itself (a test
   holds that). It shows every page of a section, then the next section, round
   all seven. Each page stays up long enough for its subpages (12-36s,
-  `cycleDwell`), and the breathing page for two full breaths. H while cycling
+  `cycleDwell`), the breathing page for two full breaths, and the clock and
+  A thought 20s (`cycleMs`; at the 12s minimum the pages most worth leaving
+  up had the shortest turn). A full pass takes about six minutes (watched
+  2026-10-05). A page with more screens than its stay carries on next time
+  round from where it left off (`cycle.resume`), so every fact and every
+  gallery picture gets its turn. H while cycling
   holds the *section*; otherwise H holds the page. Keying a page, or a coloured
   key, or Escape on the search it made, stops it. A page whose source hasn't
   answered in `FEED_WAIT_MS` (15s) is passed over, and a section with nothing
@@ -173,7 +178,9 @@ rebuilt.
   page carries its own `Page.liveMs` (`program.liveMsOf`). Two lessons from
   the tube: sky cells keep their top pixel row dark, or a run of sunny
   cities joins into one bar; and the windmill steps 15 degrees at a time,
-  since thin sails turned smoothly shimmered.
+  since thin sails turned smoothly shimmered. 2026-10-05: 102 has a picture
+  for each kind of fact (an invader for GAMES, a chip for TECH, a terminal
+  for HACKING), and 200 has its year in the clock's big digits.
 - **The index (100)** is the map and nothing else: it needs no source and
   never moves. Its NOW line (the Dow, a temperature, a score) was removed
   2026-10-01 to clear space. Sections have a blank row between them; sport is three to a row
@@ -200,7 +207,11 @@ rebuilt.
   football were dropped 2026-10-01, and their numbers are free)
   is one scoreboard page per league from ESPN's `site.api.espn.com`, which is
   **unofficial and undocumented** and could change without notice; the
-  capture is the only spec (`tests/fixtures/espn-*.json`). A scoreboard with
+  capture is the only spec (`tests/fixtures/espn-*.json`). Games run live,
+  then the last day's results, then what's coming, then older results
+  (`gameRank`, by calendar day, not 24 hours): on a Monday morning, all of
+  Sunday's finals above the evening game.
+  A scoreboard with
   a game in progress refreshes every minute (`liveRefreshMs` + `isLive` on the
   feed), otherwise every 15; a game from 15 minutes before its start counts
   as live (`scoreboardLive`). A live copy goes stale on the live period
@@ -222,7 +233,9 @@ rebuilt.
   `?page=` opens where it points on the first switch-on only.
 - **Subpages count from arrival,** so a page always opens on its first screen.
   The first version followed the broadcaster's clock and opened a twelve-fact
-  page at fact seven.
+  page at fact seven. Cycling is the exception (2026-10-05): it resumes, see
+  above, because starting over meant facts 4-8 and five gallery pictures
+  were never shown.
 - **Moving pages** (`liveMs`: breathe, the clock, the candle and others) are
   re-drawn in place between transmissions, without a reception pass.
 - **Keyboard on a desktop, touch on a phone. No mouse** (2026-09-28). The

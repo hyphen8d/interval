@@ -604,3 +604,37 @@ test('an off-air page turns its windmill in place, though its page does not move
   assert.notEqual(sails(), before, 'and the sails have turned')
   h.shutdown()
 })
+
+test('cycling carries a page on from where it left it; keying a page still opens it at the start', async () => {
+  // Watched on the tube (2026-10-05): a 36s stay showed facts 1-3 of 8 on
+  // every pass, and five of the gallery's eight pictures never came up.
+  const h = await boot()
+  await h.go('102', 3500)
+  h.key('n')
+  h.key('h') // hold NEWS, so 101 and 102 take turns
+  const arrivals = []
+  let was = h.program.page
+  for (let i = 0; i < 400 && arrivals.length < 3; i++) {
+    await h.settle(500, 250)
+    if (h.program.page === '102' && was !== '102') arrivals.push(h.program.sub)
+    was = h.program.page
+  }
+  assert.equal(arrivals.length, 3, 'came round to 102 three times')
+  assert.ok(arrivals[0] > 0, `the first time round carries on from the screen after where it was (${arrivals})`)
+  assert.notEqual(arrivals[1], arrivals[0], `and every time round moves on (${arrivals})`)
+  assert.notEqual(arrivals[2], arrivals[1], `(${arrivals})`)
+  assert.equal(h.program.pages.length, 8)
+  h.key('n') // stop
+  await h.go('101', 3500)
+  await h.go('102', 3500)
+  assert.equal(h.program.sub, 0, 'keyed by hand, it opens on its first screen')
+  h.shutdown()
+})
+
+test('the clock and A thought stay up longer when cycling than a one-screen page', async () => {
+  const h = await boot()
+  const dwell = (n) => h.program.cycleDwell(Pages.PAGES.get(n), 1)
+  assert.ok(dwell('202') >= 20000 && dwell('501') >= 20000, 'twenty seconds or more')
+  assert.ok(dwell('401') < dwell('202'))
+  h.shutdown()
+})
