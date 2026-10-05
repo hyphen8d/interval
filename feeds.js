@@ -230,6 +230,22 @@ export function parseScoreboard(json) {
       }
       return { date: Date.parse(e.date), state: e.status?.type?.state || 'pre', detail: fold(e.status?.type?.shortDetail || ''), away: side('away'), home: side('home') }
     }).filter(g => Number.isFinite(g.date)),
+    season: parseSeason(json.leagues?.[0]?.season),
+  }
+}
+/** The league's season as ESPN gives it beside the games (2026-10-05):
+ *  { label, phase, start, end }, or null. What an empty league page says --
+ *  when the season starts, or that it is over -- and the phase a page in the
+ *  postseason shows. Every field is optional: an off-season answer has not
+ *  been seen yet (the three leagues were all playing when this was added). */
+export function parseSeason(s) {
+  if (!s || typeof s !== 'object') return null
+  const start = Date.parse(s.startDate), end = Date.parse(s.endDate)
+  return {
+    label: fold(String(s.displayName ?? s.year ?? '')),
+    phase: fold(String(s.type?.name ?? '')).toUpperCase(),
+    start: Number.isFinite(start) ? start : null,
+    end: Number.isFinite(end) ? end : null,
   }
 }
 export const anyLive = (data) => !!data?.games?.some(g => g.state === 'in')

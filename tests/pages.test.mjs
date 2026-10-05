@@ -555,3 +555,19 @@ test('102 has a picture for each kind of fact; 200 has the year in big digits', 
   assert.ok(p.cells.slice(4, 9).some(row => row.slice(1, 20).some(x => x.mos > 0 && x.fg === 3)), 'a big yellow year')
   assert.ok(p.lines().slice(10, 14).join(' ').trim().length > 20, 'and the event under it')
 })
+
+test('an empty league page says when the season starts, and why cycling skips it', async () => {
+  const { offSeasonWords } = await import('../pages.js')
+  const day = 864e5
+  assert.match(offSeasonWords({ label: '2027', start: NOW + 40 * day, end: NOW + 200 * day }, NOW), /The 2027 season starts November \d+\./)
+  assert.equal(offSeasonWords({ label: '2026', start: NOW - 200 * day, end: NOW - day }, NOW), 'The season is over.')
+  assert.equal(offSeasonWords({ phase: 'OFF SEASON' }, NOW), "It's the off season.")
+  assert.equal(offSeasonWords(null, NOW), 'No games this week.')
+  const data = { ...allData(), sport_mlb: { games: [], season: { label: '2027', phase: 'PRESEASON', start: NOW + 40 * day, end: NOW + 300 * day } } }
+  const text = pageDef('603', ctxWith(data)).render(ctxWith(data))[0].lines().join(' ').replace(/\s+/g, ' ')
+  assert.match(text, /season starts/)
+  assert.match(text, /Cycling passes this page by/)
+  const live = pageDef('603', ctxWith()).render(ctxWith())[0].lines()[4]
+  assert.match(live, /POSTSEASON/, 'a playoff scoreboard says so')
+  assert.ok(!/REGULAR/.test(pageDef('601', ctxWith()).render(ctxWith())[0].lines()[4]), 'the ordinary season says nothing')
+})

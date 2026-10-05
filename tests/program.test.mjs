@@ -10,7 +10,7 @@ import * as Pages from '../pages.js'
 test('switching on lands on the welcome, 190', async () => {
   const h = await boot()
   assert.match(h.row(0), /^ P190 INTERVAL\s+Mon Sep 28\s+20:00:0\d$/)
-  assert.ok(h.find('Press N and the set turns its own'))
+  assert.ok(h.find('(or CYCLE) and the set turns'))
   assert.equal(h.colourAt(3, 1).bg, RED, 'the masthead is in colour: the news magazine, 1xx')
   h.shutdown()
 })
@@ -448,7 +448,7 @@ test('every switch-on lands on 190, not the page the set was switched off on', a
   assert.ok(h.find('STANDBY'))
   h.key('p'); await h.settle(BOOT_MS + 2000)
   assert.equal(h.program.page, '190')
-  assert.ok(h.find('Press N and the set turns its own'))
+  assert.ok(h.find('(or CYCLE) and the set turns'))
   h.shutdown()
   // A ?page= link opens where it points once; the next switch-on is 190.
   const h2 = await boot({ query: '?page=302' })

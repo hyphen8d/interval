@@ -362,3 +362,16 @@ test('402: a monthly series looks back far enough for its chart', async () => {
   const un = HOUSEHOLD.find(s => s.id === 'UNRATE')
   assert.ok(un.days >= 9 * 31, `${un.days} days is at least nine months back, for ten readings`)
 })
+
+test('scoreboards carry the season: its name, phase and dates, from the capture', async () => {
+  const { parseScoreboard, parseSeason } = await import('../feeds.js')
+  const mlb = parseScoreboard(fx('espn-baseball-mlb.json')).season
+  assert.equal(mlb.phase, 'POSTSEASON')
+  assert.equal(mlb.label, '2026')
+  assert.ok(mlb.start < mlb.end)
+  assert.equal(parseScoreboard(fx('espn-basketball-nba.json')).season.label, '2026-27')
+  // Every field optional: an off-season answer has not been seen yet.
+  assert.equal(parseSeason(undefined), null)
+  assert.deepEqual(parseSeason({}), { label: '', phase: '', start: null, end: null })
+  assert.equal(parseScoreboard({ events: [] }).season, null)
+})

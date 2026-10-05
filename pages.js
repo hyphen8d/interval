@@ -1104,6 +1104,16 @@ export function gameStatus(g) {
   const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(' ', '').toUpperCase()
   return { text: `${day} ${time}`, fg: CYAN }
 }
+/** What an empty league page says: when the season starts, that it is over,
+ *  or (knowing neither) that there are no games this week. */
+export function offSeasonWords(season, now) {
+  const day = (ms) => new Date(ms).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+  if (season?.start && season.start > now) return `No games yet. The ${season.label ? `${season.label} ` : ''}season starts ${day(season.start)}.`
+  if (season?.end && season.end < now) return 'The season is over.'
+  if (/OFF/.test(season?.phase || '')) return "It's the off season."
+  return 'No games this week.'
+}
+
 /** Where a game goes on the scoreboard: live games, then results from
  *  yesterday or today, then what is coming up, then older results.
  *  2026-10-05: it was live, upcoming, results, so on a Monday morning the
@@ -1135,8 +1145,19 @@ for (const [key, name, , num] of LEAGUES) {
         return chunks.map((chunk, i) => {
           const p = new Page()
           masthead(p, num, clip(name, 22), { sub: i, subs: chunks.length, right: 'SPORT' })
-          if (!games.length) p.wrap(BODY_TOP + 1, 1, 'No games this week.', 38, CYAN)
-          else { p.text(BODY_TOP, 1, 'AWAY', CYAN); p.text(BODY_TOP, 11, 'HOME', CYAN) }
+          const season = data[`sport_${key}`].season
+          if (!games.length) {
+            // Why the page is empty, and when it will not be (2026-10-05):
+            // "No games this week" said nothing about whether that meant
+            // tonight or March, nor why cycling had stopped coming here.
+            const r = p.wrap(BODY_TOP + 1, 1, offSeasonWords(season, ctx.now), 38, CYAN)
+            p.wrap(r + 1, 1, 'Cycling passes this page by until there are games to show.', 38, WHITE)
+          } else {
+            p.text(BODY_TOP, 1, 'AWAY', CYAN); p.text(BODY_TOP, 11, 'HOME', CYAN)
+            // The phase when it is not the ordinary run of the season: a
+            // playoff scoreboard is news in itself.
+            if (season?.phase && season.phase !== 'REGULAR SEASON') p.text(BODY_TOP, 22, clip(season.phase, 17), MAGENTA)
+          }
           chunk.forEach((g, k) => {
             const r = BODY_TOP + 2 + k
             const st = gameStatus(g)

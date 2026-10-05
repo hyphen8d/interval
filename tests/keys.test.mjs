@@ -68,3 +68,24 @@ test('a first digit that cannot start a page says so', async () => {
   assert.match(h.row(0), /NO 9XX/)
   h.shutdown()
 })
+
+test('every button on the phone remote does something you can see, help and clear among them', async () => {
+  // 2026-10-05: help and Escape were keyboard-only, so a phone had no way to
+  // 199 but the index, and no way to give up a search for a page not on air.
+  const { readFileSync } = await import('node:fs')
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+  const remote = html.slice(html.indexOf('id="remote"'), html.indexOf('</div>', html.indexOf('id="remote"')))
+  const keys = [...remote.matchAll(/data-key="([^"]+)"/g)].map(m => m[1])
+  assert.ok(keys.includes('?') && keys.includes('Escape'), `the remote has HELP and CLEAR (${keys})`)
+  for (const k of keys) {
+    if (k === 'p') continue // power: its own test, and it ends the session
+    const h = await boot()
+    await h.go('200', 3500)
+    if (k === 'Escape') h.key('1') // something for CLEAR to clear
+    const before = snapshot(h)
+    h.key(k)
+    await h.settle(3000)
+    assert.notEqual(snapshot(h), before, `the ${k} button changes the screen`)
+    h.shutdown()
+  }
+})

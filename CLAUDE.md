@@ -209,7 +209,10 @@ rebuilt.
   **unofficial and undocumented** and could change without notice; the
   capture is the only spec (`tests/fixtures/espn-*.json`). Games run live,
   then the last day's results, then what's coming, then older results
-  (`gameRank`, by calendar day, not 24 hours): on a Monday morning, all of
+  The page shows the season's phase when it is not the regular season
+  (POSTSEASON), and a league with no games says when its season starts
+  (`parseSeason`, `offSeasonWords`); off-season answers have not been seen,
+  so every season field is optional. (`gameRank`, by calendar day, not 24 hours): on a Monday morning, all of
   Sunday's finals above the evening game.
   A scoreboard with
   a game in progress refreshes every minute (`liveRefreshMs` + `isLive` on the
@@ -255,7 +258,10 @@ rebuilt.
   `pointer.js` `cellAt` inverts the CRT composite's geometry (fill, aspect,
   barrel curve), and `tests/pointer.test.mjs` runs the warp forwards to check
   the corners. The phone remote's colour buttons carry the current labels
-  through the `INTERVAL_FASTEXT` hook (`program.publishFastext`).
+  through the `INTERVAL_FASTEXT` hook (`program.publishFastext`). It has HELP
+  and CLEAR (Escape) since 2026-10-05; `tests/keys.test.mjs` presses every
+  button on it. `tools/shoot.mjs`'s session has `tap` and `swipe` (real touch
+  events through CDP) for checking a phone, since a mouse click is ignored.
 - **Subpage timing is per page** (`subpageMs`): 9s by default, and 12-16s on
   pages of running text.
 - **Notice pages come from `editorial.json`.** Any free page number works;

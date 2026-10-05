@@ -84,6 +84,18 @@ export async function session(url, { mobile = false } = {}, fn) {
         for (let i = 0; i < tries; i++) { if (await api.ev(expr)) return true; await sleep(gap) }
         throw new Error(`timed out waiting for ${expr}`)
       },
+      /** A real touch, down and up, at CSS pixel (x, y): what a phone sends.
+       *  The set ignores the mouse (main.js), so phone checks need this. */
+      async tap(x, y) { await api.swipe(x, y, x, y, 80) },
+      /** A touch dragged from (x0, y0) to (x1, y1) over `ms`. */
+      async swipe(x0, y0, x1, y1, ms = 200) {
+        await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y: y0 }] })
+        for (let i = 1; i <= 4; i++) {
+          await sleep(ms / 5)
+          await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 + (x1 - x0) * i / 4, y: y0 + (y1 - y0) * i / 4 }] })
+        }
+        await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      },
       /** A real mouse click at CSS pixel (x, y). */
       async click(x, y) {
         for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {

@@ -15,7 +15,7 @@ unused fields dropped) and otherwise untouched.
 | open-meteo-cities.json | api.open-meteo.com forecast, twelve US and twelve world cities in one request (recaptured 2026-10-01) |
 | open-meteo.json | api.open-meteo.com forecast, 5 days, New York |
 | markets.json | tools/fetch-markets.mjs's own output: FRED daily closes, eight series, plus the five household series for 402. One hand repair (2026-10-01): the capture's Nikkei history held three zeros, the fetcher reading FRED's empty holiday values as closes; they were replaced with the three earlier closes FRED gives for that window, so the row is what the fixed fetcher makes of the same day. |
-| espn-*.json | site.api.espn.com scoreboards, one per league on 601-603 (unofficial, undocumented API) |
+| espn-*.json | site.api.espn.com scoreboards, one per league on 601-603 (unofficial, undocumented API). Trimmed when captured, which dropped `leagues[0].season`; the real season block from a 2026-10-05 answer was added back to each, the games left as they were |
 | launches.json | ll.thespacedevs.com 2.2.0, upcoming launches, limit 6 |
 | holidays-us.json | date.nager.at v3, NextPublicHolidays/US |
 
